@@ -105,7 +105,7 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         File shmDir = new File(rootDir, "/tmp/shm");
         if (!shmDir.isDirectory()) shmDir.mkdirs();
 
-        String command = rootDir+"/usr/local/bin/box64 "+guestExecutable;
+        String command = rootDir+"/lib/ld-linux-aarch64.so.1 --inhibit-cache --library-path "+rootDir+"/lib "+rootDir+"/usr/local/bin/box64 "+guestExecutable;
 
         return ProcessHelper.exec(command, envVars, rootDir, (status) -> {
             synchronized (lock) {
