@@ -145,7 +145,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         AppUtils.hideSystemUI(this);
         AppUtils.keepScreenOn(this);
         setContentView(R.layout.xserver_display_activity);
-        dedicatedLauncherMode = getIntent().getBooleanExtra("naninovel_mode", false);
+        dedicatedLauncherMode = getIntent().getBooleanExtra("tsoa_fe_mode", false);
         ForegroundService.startSession(this);
 
         final PreloaderDialog preloaderDialog = new PreloaderDialog(this);

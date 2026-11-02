@@ -15,7 +15,10 @@ import android.os.Bundle;
 import android.view.MenuItem;
 import android.view.Gravity;
 import android.view.View;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.Spinner;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -71,21 +74,23 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     private SharedPreferences preferences;
     private Fragment currentFragment;
 
-    // Dedicated Naninovel launcher state. The upstream Winlator screens remain in the source
+    // Dedicated TSOA_FE launcher state. The upstream Winlator screens remain in the source
     // tree for compatibility, but the app entry point uses this minimal launcher flow.
     private static final int REQUEST_GAME_FOLDER = 51;
     private static final String LAUNCHER_PREFS = "naninovel_launcher";
     private static final String PREF_CONTAINER_ID = "container_id";
+    private static final String PREF_SCREEN_SIZE = "screen_size";
     private boolean dedicatedLauncher = false;
     private boolean rootFSReady = false;
     private boolean importInProgress = false;
     private boolean gameLaunchActive = false;
-    private boolean autoLaunchPending = true;
     private TextView launcherStatus;
     private TextView launcherDetail;
     private ProgressBar launcherProgress;
     private Button launcherAction;
     private Button launcherImportAgain;
+    private Spinner launcherResolution;
+    private String[] launcherResolutionValues;
     private final java.util.concurrent.ExecutorService importExecutor = Executors.newSingleThreadExecutor();
 
     @Override
@@ -178,7 +183,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         root.addView(icon, iconParams);
 
         TextView title = new TextView(this);
-        title.setText("NANINOVEL");
+        title.setText("TSOA_FE");
         title.setTextColor(Color.WHITE);
         title.setTextSize(25);
         title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
@@ -193,8 +198,53 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         subtitle.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(-1, -2);
         subtitleParams.topMargin = dp(5);
-        subtitleParams.bottomMargin = dp(44);
+        subtitleParams.bottomMargin = dp(18);
         root.addView(subtitle, subtitleParams);
+
+        String[] allScreenSizes = getResources().getStringArray(R.array.screen_size_entries);
+        String[] resolutionLabels = java.util.Arrays.copyOfRange(allScreenSizes, 1, allScreenSizes.length);
+        launcherResolutionValues = new String[resolutionLabels.length];
+
+        for (int i = 0; i < resolutionLabels.length; i++) {
+            String label = resolutionLabels[i].trim();
+            launcherResolutionValues[i] = i == 0 ? "native" : label.split("\\s+")[0];
+        }
+
+        TextView resolutionLabel = new TextView(this);
+        resolutionLabel.setText("RESOLUÇÃO DO JOGO");
+        resolutionLabel.setTextColor(Color.rgb(210, 190, 185));
+        resolutionLabel.setTextSize(12);
+        resolutionLabel.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams resolutionLabelParams = new LinearLayout.LayoutParams(-1, -2);
+        resolutionLabelParams.bottomMargin = dp(6);
+        root.addView(resolutionLabel, resolutionLabelParams);
+
+        launcherResolution = new Spinner(this);
+        ArrayAdapter<String> resolutionAdapter = new ArrayAdapter<>(
+            this, android.R.layout.simple_spinner_item, resolutionLabels);
+        resolutionAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        launcherResolution.setAdapter(resolutionAdapter);
+        root.addView(launcherResolution, new LinearLayout.LayoutParams(-1, dp(48)));
+
+        String savedResolution = launcherPreferences.getString(PREF_SCREEN_SIZE, "960x544");
+        int selectedResolutionIndex = Math.min(5, resolutionLabels.length - 1);
+        for (int i = 0; i < launcherResolutionValues.length; i++) {
+            if (launcherResolutionValues[i].equals(savedResolution)) {
+                selectedResolutionIndex = i;
+                break;
+            }
+        }
+        launcherResolution.setSelection(selectedResolutionIndex, false);
+        launcherResolution.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                launcherPreferences.edit()
+                    .putString(PREF_SCREEN_SIZE, launcherResolutionValues[position]).apply();
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
 
         launcherStatus = new TextView(this);
         launcherStatus.setTextColor(Color.WHITE);
@@ -249,6 +299,18 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         setContentView(root);
     }
 
+    private String getLauncherScreenSize() {
+        if (launcherResolution != null && launcherResolutionValues != null) {
+            int position = launcherResolution.getSelectedItemPosition();
+            if (position >= 0 && position < launcherResolutionValues.length) {
+                String value = launcherResolutionValues[position];
+                launcherPreferences.edit().putString(PREF_SCREEN_SIZE, value).apply();
+                return value;
+            }
+        }
+        return launcherPreferences.getString(PREF_SCREEN_SIZE, "960x544");
+    }
+
     private int dp(float value) {
         return (int)(value * getResources().getDisplayMetrics().density + 0.5f);
     }
@@ -264,13 +326,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
 
     private void onLauncherRuntimeReady() {
         File gameDir = GameImportManager.getGameDirectory(this);
-        if (autoLaunchPending && GameImportManager.isValidGameDirectory(gameDir)) {
-            autoLaunchPending = false;
-            ensureDedicatedContainerAndLaunch();
-            return;
-        }
-
-        boolean gameReady = GameImportManager.isValidGameDirectory(gameDir);
+boolean gameReady = GameImportManager.isValidGameDirectory(gameDir);
         setLauncherStatus(gameReady ? "TSOA ESTÁ PRONTO" : "SELECIONE A PASTA DO JOGO",
             gameReady ? "O ambiente está configurado para inicialização direta." : "Escolha a pasta game que contém TSOA.exe e TSOA_Data.", false);
         launcherAction.setText(gameReady ? "JOGAR" : "IMPORTAR JOGO");
@@ -312,8 +368,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                 }));
                 runOnUiThread(() -> {
                     importInProgress = false;
-                    setLauncherStatus("INSTALAÇÃO IMPORTADA", "Verificando e preparando o container dedicado.", true);
-                    ensureDedicatedContainerAndLaunch();
+                    onLauncherRuntimeReady();
                 });
             }
             catch (Exception e) {
@@ -349,15 +404,15 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
 
         try {
             JSONObject data = new JSONObject();
-            data.put("name", "Naninovel");
-            data.put("screenSize", Container.DEFAULT_SCREEN_SIZE);
+            data.put("name", "TSOA_FE");
+            data.put("screenSize", getLauncherScreenSize());
             data.put("envVars", Container.DEFAULT_ENV_VARS);
             data.put("graphicsDriver", GraphicsDrivers.TURNIP + "," + GraphicsDrivers.GLADIO);
             data.put("dxwrapper", DXWrappers.DXVK);
             data.put("audioDriver", AudioDrivers.ALSA);
             data.put("wincomponents", Container.DEFAULT_WINCOMPONENTS);
             data.put("drives", "F:" + gameDir.getAbsolutePath());
-            data.put("box64Preset", Box64Preset.STABILITY);
+            data.put("box64Preset", Box64Preset.DEFAULT);
             data.put("startupSelection", Container.STARTUP_SELECTION_ESSENTIAL);
             manager.createContainerAsync(data, (createdContainer) -> {
                 if (createdContainer == null) {
@@ -381,18 +436,17 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     }
 
     private void configureDedicatedContainer(Container container, File gameDir) {
-        container.setName("Naninovel");
-        container.setScreenSize(Container.DEFAULT_SCREEN_SIZE);
+        container.setName("TSOA_FE");
+        container.setScreenSize(getLauncherScreenSize());
         container.setGraphicsDriver(GraphicsDrivers.TURNIP + "," + GraphicsDrivers.GLADIO);
         container.setDXWrapper(DXWrappers.DXVK);
         container.setAudioDriver(AudioDrivers.ALSA);
-        container.setBox64Preset(Box64Preset.STABILITY);
+        container.setBox64Preset(Box64Preset.DEFAULT);
         container.setDrives("F:" + gameDir.getAbsolutePath());
         container.saveData();
     }
 
     private void launchDedicatedGame(Container container) {
-        autoLaunchPending = false;
         File executable = new File(GameImportManager.getGameDirectory(this), "TSOA.exe");
         if (!executable.isFile()) {
             setLauncherStatus("EXECUTÁVEL NÃO ENCONTRADO", "A instalação importada não contém TSOA.exe.", false);
@@ -404,7 +458,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         Intent intent = new Intent(this, XServerDisplayActivity.class);
         intent.putExtra("container_id", container.id);
         intent.putExtra("exec_path", executable.getAbsolutePath());
-        intent.putExtra("naninovel_mode", true);
+        intent.putExtra("tsoa_fe_mode", true);
         gameLaunchActive = true;
         launcherImportAgain.setVisibility(View.GONE);
         setLauncherStatus("INICIANDO TSOA", "Carregando o runtime Windows e a renderização Vulkan.", true);
