@@ -89,7 +89,9 @@ public abstract class ProcessHelper {
 
             if (terminationCallback != null) createWaitForThread(process, terminationCallback);
         }
-        catch (Exception e) {}
+        catch (Exception e) {
+            android.util.Log.e("TSOA_FE_DIAG", "ProcessHelper.exec failed. Command: " + command, e);
+        }
         return pid;
     }
 
