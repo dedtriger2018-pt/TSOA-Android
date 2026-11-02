@@ -30,6 +30,9 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
     private String box64Preset = Box64Preset.CONSERVATIVE;
     private Callback<Integer> terminationCallback;
     private static final Object lock = new Object();
+    private static boolean diagnosticOutputRegistered = false;
+    private static final java.util.concurrent.atomic.AtomicInteger diagnosticLineCount =
+            new java.util.concurrent.atomic.AtomicInteger(0);
 
     @Override
     public void start() {
@@ -107,7 +110,24 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
 
         String command = rootDir+"/lib/ld-linux-aarch64.so.1 --inhibit-cache --library-path "+rootDir+"/lib "+rootDir+"/usr/local/bin/box64 "+guestExecutable;
 
+        android.util.Log.e("TSOA_FE_DIAG", "Launching guest command: " + command);
+
+        if (!diagnosticOutputRegistered) {
+            ProcessHelper.addDebugCallback(line -> {
+                int index = diagnosticLineCount.getAndIncrement();
+                if (index < 250) {
+                    android.util.Log.e("TSOA_FE_DIAG", line);
+                }
+                else if (index == 250) {
+                    android.util.Log.e("TSOA_FE_DIAG", "Output truncated after 250 lines.");
+                }
+            });
+            diagnosticOutputRegistered = true;
+        }
+
         return ProcessHelper.exec(command, envVars, rootDir, (status) -> {
+            android.util.Log.e("TSOA_FE_DIAG",
+                    "Guest process exited with status=" + status + " command=" + command);
             synchronized (lock) {
                 pid = -1;
             }
