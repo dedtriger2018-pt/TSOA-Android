@@ -1,0 +1,28 @@
+name: Build TSOA x86_64 Probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/tsoa_redirect_probe/tsoa_redirect_probe.c'
+      - '.github/workflows/tsoa-probe-x86_64.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile x86_64 library
+        run: |
+          mkdir -p build/tsoa-redirect-probe-x86_64
+          gcc -shared -fPIC -O2 -Wall -Wextra -Werror \
+            -o build/tsoa-redirect-probe-x86_64/libtsoa_redirect_probe_x86_64.so \
+            tools/tsoa_redirect_probe/tsoa_redirect_probe.c -ldl
+          file build/tsoa-redirect-probe-x86_64/libtsoa_redirect_probe_x86_64.so
+          readelf -h build/tsoa-redirect-probe-x86_64/libtsoa_redirect_probe_x86_64.so
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tsoa-redirect-probe-x86_64
+          path: build/tsoa-redirect-probe-x86_64/libtsoa_redirect_probe_x86_64.so
