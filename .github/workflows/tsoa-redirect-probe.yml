@@ -1,0 +1,38 @@
+name: Build TSOA Redirect Probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ARM64 glibc cross compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Compile probe
+        run: |
+          set -euo pipefail
+          mkdir -p build/tsoa-redirect-probe
+
+          aarch64-linux-gnu-gcc \
+            -shared -fPIC -O2 -Wall -Wextra -Werror \
+            -Wl,-soname,libtsoa_redirect_probe.so \
+            tools/tsoa_redirect_probe/tsoa_redirect_probe.c \
+            -o build/tsoa-redirect-probe/libtsoa_redirect_probe.so
+
+          file build/tsoa-redirect-probe/libtsoa_redirect_probe.so
+          readelf -h build/tsoa-redirect-probe/libtsoa_redirect_probe.so | grep -E 'Class:|Machine:'
+          readelf -d build/tsoa-redirect-probe/libtsoa_redirect_probe.so | grep NEEDED
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tsoa-redirect-probe-arm64
+          path: build/tsoa-redirect-probe/libtsoa_redirect_probe.so
