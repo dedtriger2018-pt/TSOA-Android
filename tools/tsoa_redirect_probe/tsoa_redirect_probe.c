@@ -8,6 +8,24 @@
 typedef int (*mkdir_fn)(const char *, mode_t);
 typedef int (*mkdirat_fn)(int, const char *, mode_t);
 
+/* Write all available bytes, handling partial writes and EINTR. */
+static void probe_write(const char *data, size_t length)
+{
+    while (length > 0) {
+        ssize_t result = write(STDERR_FILENO, data, length);
+
+        if (result < 0) {
+            if (errno == EINTR) continue;
+            break;
+        }
+
+        if (result == 0) break;
+
+        data += result;
+        length -= (size_t)result;
+    }
+}
+
 static void trace_path(const char *function, const char *path)
 {
     if (!path) return;
@@ -19,18 +37,18 @@ static void trace_path(const char *function, const char *path)
     const char middle[] = "] ";
     const char newline[] = "\n";
 
-    write(STDERR_FILENO, prefix, sizeof(prefix) - 1);
-    write(STDERR_FILENO, function, strlen(function));
-    write(STDERR_FILENO, middle, sizeof(middle) - 1);
-    write(STDERR_FILENO, path, strnlen(path, 1024));
-    write(STDERR_FILENO, newline, 1);
+    probe_write(prefix, sizeof(prefix) - 1);
+    probe_write(function, strlen(function));
+    probe_write(middle, sizeof(middle) - 1);
+    probe_write(path, strnlen(path, 1024));
+    probe_write(newline, 1);
 }
 
 __attribute__((constructor))
 static void probe_init(void)
 {
     const char msg[] = "[TSOA_PROBE loaded]\n";
-    write(STDERR_FILENO, msg, sizeof(msg) - 1);
+    probe_write(msg, sizeof(msg) - 1);
 }
 
 int mkdir(const char *path, mode_t mode)
