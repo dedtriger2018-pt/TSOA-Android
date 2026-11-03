@@ -1,0 +1,32 @@
+name: Build TSOA Redirector x86_64
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/tsoa_redirect_probe/tsoa_redirector.c'
+      - '.github/workflows/tsoa-redirector-x86_64.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile redirector
+        run: |
+          mkdir -p build/tsoa-redirector-x86_64
+
+          gcc -shared -fPIC -O2 -Wall -Wextra -Werror \
+            -o build/tsoa-redirector-x86_64/libtsoa_redirector_x86_64.so \
+            tools/tsoa_redirect_probe/tsoa_redirector.c \
+            -ldl
+
+          file build/tsoa-redirector-x86_64/libtsoa_redirector_x86_64.so
+          readelf -h build/tsoa-redirector-x86_64/libtsoa_redirector_x86_64.so
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tsoa-redirector-x86_64
+          path: build/tsoa-redirector-x86_64/libtsoa_redirector_x86_64.so
