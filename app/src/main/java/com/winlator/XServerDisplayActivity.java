@@ -508,6 +508,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
     private void setupXEnvironment() {
         String rootPath = rootFS.getRootDir().getPath();
+
+        boolean tsoaRedirectorShortcut = shortcut != null &&
+                "1".equals(new EnvVars(shortcut.getExtra("envVars"))
+                        .get("TSOA_REDIRECTOR_V2"));
         envVars.put("MESA_DEBUG", "silent");
         envVars.put("MESA_NO_ERROR", "1");
         envVars.put("WINEPREFIX", rootPath+RootFS.WINEPREFIX);
@@ -530,6 +534,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
             envVars.putAll(container.getEnvVars());
             if (shortcut != null) envVars.putAll(shortcut.getExtra("envVars"));
+
             if (!envVars.has("WINEESYNC")) envVars.put("WINEESYNC", "1");
 
             guestProgramLauncherComponent.setBox64Preset(shortcut != null ? shortcut.getExtra("box64Preset", container.getBox64Preset()) : container.getBox64Preset());
@@ -581,6 +586,13 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             envVars.putAll(overrideEnvVars);
             overrideEnvVars = null;
         }
+
+        // Only the explicitly marked shortcut may enable Redirector V2.
+        envVars.remove("TSOA_REDIRECTOR_V2");
+        if (tsoaRedirectorShortcut) {
+            envVars.put("TSOA_REDIRECTOR_V2", "1");
+        }
+
         environment.startEnvironmentComponents();
 
         winHandler.start();

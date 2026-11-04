@@ -21,7 +21,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
-import java.util.concurrent.Executors;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 public abstract class ProcessHelper {
@@ -68,58 +69,152 @@ public abstract class ProcessHelper {
     }
 
     public static int exec(String command, EnvVars envVars, File workingDir, Callback<Integer> terminationCallback) {
+        return exec(command, envVars, workingDir, terminationCallback, null);
+    }
+
+    public static int exec(String command, EnvVars envVars, File workingDir,
+                           Callback<Integer> terminationCallback,
+                           Callback<String> processOutputCallback) {
         int pid = -1;
+        CountDownLatch outputReaders = null;
+
         try {
-            ProcessBuilder processBuilder = (new ProcessBuilder(splitCommand(command))).directory(workingDir);
-            if (debugCallbacks.isEmpty()) processBuilder.redirectOutput(new File("/dev/null")).redirectErrorStream(true);
+            ProcessBuilder processBuilder =
+                    (new ProcessBuilder(splitCommand(command))).directory(workingDir);
+
+            boolean hasGlobalCallbacks;
+            synchronized (debugCallbacks) {
+                hasGlobalCallbacks = !debugCallbacks.isEmpty();
+            }
+
+            boolean captureOutput =
+                    processOutputCallback != null || hasGlobalCallbacks;
+
+            if (!captureOutput) {
+                processBuilder.redirectOutput(new File("/dev/null"))
+                        .redirectErrorStream(true);
+            }
 
             Map<String, String> environment = processBuilder.environment();
-            for (String name : envVars) environment.put(name, envVars.get(name));
+            for (String name : envVars) {
+                environment.put(name, envVars.get(name));
+            }
 
             java.lang.Process process = processBuilder.start();
+
             Field pidField = process.getClass().getDeclaredField("pid");
             pidField.setAccessible(true);
             pid = pidField.getInt(process);
             pidField.setAccessible(false);
 
-            if (!debugCallbacks.isEmpty()) {
-                createDebugThread(process.getInputStream());
-                createDebugThread(process.getErrorStream());
+            if (captureOutput) {
+                outputReaders = new CountDownLatch(2);
+                createDebugThread(process.getInputStream(), processOutputCallback, outputReaders);
+                createDebugThread(process.getErrorStream(), processOutputCallback, outputReaders);
             }
 
-            if (terminationCallback != null) createWaitForThread(process, terminationCallback);
+            if (terminationCallback != null) {
+                createWaitForThread(process, terminationCallback, outputReaders, processOutputCallback);
+            }
         }
         catch (Exception e) {
-            android.util.Log.e("TSOA_FE_DIAG", "ProcessHelper.exec failed. Command: " + command, e);
+            android.util.Log.e("TSOA_FE_DIAG",
+                    "ProcessHelper.exec failed. Command: " + command, e);
         }
+
         return pid;
     }
 
-    private static void createDebugThread(final InputStream inputStream) {
-        Executors.newSingleThreadExecutor().execute(() -> {
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
+    private static void createDebugThread(
+            final InputStream inputStream,
+            final Callback<String> processOutputCallback,
+            final CountDownLatch outputReaders) {
+
+        new Thread(() -> {
+            try (BufferedReader reader =
+                         new BufferedReader(new InputStreamReader(inputStream))) {
+
                 String line;
+
                 while ((line = reader.readLine()) != null) {
-                    synchronized (debugCallbacks) {
-                        if (!debugCallbacks.isEmpty()) {
-                            for (Callback<String> callback : debugCallbacks) callback.call(line);
+                    if (processOutputCallback != null) {
+                        try {
+                            processOutputCallback.call(line);
                         }
-                        else if (MainActivity.DEBUG_MODE) System.out.println(line);
+                        catch (RuntimeException e) {
+                            android.util.Log.e("TSOA_FE_DIAG",
+                                    "Process output callback failed.", e);
+                        }
+                    }
+
+                    ArrayList<Callback<String>> callbacks;
+
+                    synchronized (debugCallbacks) {
+                        callbacks = new ArrayList<>(debugCallbacks);
+                    }
+
+                    if (!callbacks.isEmpty()) {
+                        for (Callback<String> callback : callbacks) {
+                            try {
+                                callback.call(line);
+                            }
+                            catch (RuntimeException e) {
+                                android.util.Log.e("ProcessHelper",
+                                        "Debug callback failed.", e);
+                            }
+                        }
+                    }
+                    else if (processOutputCallback == null && MainActivity.DEBUG_MODE) {
+                        System.out.println(line);
                     }
                 }
             }
-            catch (IOException e) {}
-        });
+            catch (IOException e) {
+                android.util.Log.w("ProcessHelper",
+                        "Unable to finish reading process output.", e);
+            }
+            finally {
+                outputReaders.countDown();
+            }
+        }, "ProcessHelper-output-reader").start();
     }
 
-    private static void createWaitForThread(java.lang.Process process, final Callback<Integer> terminationCallback) {
-        Executors.newSingleThreadExecutor().execute(() -> {
+    private static void createWaitForThread(
+            java.lang.Process process,
+            final Callback<Integer> terminationCallback,
+            final CountDownLatch outputReaders,
+            final Callback<String> processOutputCallback) {
+
+        new Thread(() -> {
             try {
                 int status = process.waitFor();
+
+                if (outputReaders != null) {
+                    boolean drained = outputReaders.await(5, TimeUnit.SECONDS);
+
+                    if (!drained) {
+                        String warning =
+                                "WARNING: Output readers did not drain within 5 seconds.";
+
+                        android.util.Log.w("TSOA_FE_DIAG", warning);
+
+                        if (processOutputCallback != null) {
+                            try {
+                                processOutputCallback.call(warning);
+                            } catch (RuntimeException e) {
+                                android.util.Log.e("TSOA_FE_DIAG",
+                                        "Unable to record output timeout.", e);
+                            }
+                        }
+                    }
+                }
+
                 terminationCallback.call(status);
             }
-            catch (InterruptedException e) {}
-        });
+            catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, "ProcessHelper-process-waiter").start();
     }
 
     public static void removeAllDebugCallbacks() {

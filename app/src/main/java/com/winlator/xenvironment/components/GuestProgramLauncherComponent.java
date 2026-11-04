@@ -15,6 +15,8 @@ import com.winlator.core.FileUtils;
 import com.winlator.core.GeneralComponents;
 import com.winlator.core.LocaleHelper;
 import com.winlator.core.ProcessHelper;
+import com.winlator.core.TsoaRedirectorV2;
+import com.winlator.core.TsoaRedirectorV2Log;
 import com.winlator.widget.LogView;
 import com.winlator.xconnector.UnixSocketConfig;
 import com.winlator.xenvironment.EnvironmentComponent;
@@ -30,9 +32,6 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
     private String box64Preset = Box64Preset.CONSERVATIVE;
     private Callback<Integer> terminationCallback;
     private static final Object lock = new Object();
-    private static boolean diagnosticOutputRegistered = false;
-    private static final java.util.concurrent.atomic.AtomicInteger diagnosticLineCount =
-            new java.util.concurrent.atomic.AtomicInteger(0);
 
     @Override
     public void start() {
@@ -87,6 +86,7 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
     }
 
     private int execGuestProgram() {
+        Context context = environment.getContext();
         RootFS rootFS = environment.getRootFS();
         File rootDir = rootFS.getRootDir();
 
@@ -105,34 +105,77 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
 
         if (this.envVars != null) envVars.putAll(this.envVars);
 
+        boolean tsoaRedirectorRequested =
+                "1".equals(envVars.get("TSOA_REDIRECTOR_V2"));
+        envVars.remove("TSOA_REDIRECTOR_V2");
+
+        if (tsoaRedirectorRequested) {
+            File redirectorLibrary = TsoaRedirectorV2.install(context);
+            String wineDir = rootFS.getWinePath();
+            String wineAbsolute = rootDir.getAbsolutePath() + wineDir;
+
+            File wineBin = new File(wineAbsolute, "bin");
+            File wineNls = new File(wineAbsolute, "share/wine/nls");
+
+            if (redirectorLibrary != null &&
+                    wineBin.isDirectory() && wineNls.isDirectory()) {
+
+                String redirectorPath = redirectorLibrary.getAbsolutePath();
+                String existingPreload = envVars.get("BOX64_LD_PRELOAD");
+                StringBuilder preload = new StringBuilder(redirectorPath);
+
+                if (!existingPreload.isEmpty()) {
+                    for (String entry : existingPreload.split(":")) {
+                        if (!entry.isEmpty() && !entry.equals(redirectorPath)) {
+                            preload.append(':').append(entry);
+                        }
+                    }
+                }
+
+                envVars.put("BOX64_LD_PRELOAD", preload.toString());
+                envVars.put("BOX64_FORCE_LD_PRELOAD", "1");
+                envVars.put("TSOA_ROOTFS", rootDir.getAbsolutePath());
+                envVars.put("TSOA_WINE_DIR", wineDir);
+
+                android.util.Log.i("TSOA_REDIRECT_V2",
+                        "Preload configured: " + redirectorPath);
+            }
+            else {
+                android.util.Log.e("TSOA_REDIRECT_V2",
+                        "Installation or Wine directories invalid; preload disabled.");
+            }
+        }
+
         File shmDir = new File(rootDir, "/tmp/shm");
         if (!shmDir.isDirectory()) shmDir.mkdirs();
 
         String command = rootDir+"/lib/ld-linux-aarch64.so.1 --inhibit-cache --library-path "+rootDir+"/lib "+rootDir+"/usr/local/bin/box64 "+guestExecutable;
 
         android.util.Log.e("TSOA_FE_DIAG", "Launching guest command: " + command);
+        if (tsoaRedirectorRequested) {
+            TsoaRedirectorV2Log.append(context, "===== TSOA guest launch =====");
+            TsoaRedirectorV2Log.append(context, "Launching guest command: " + command);
+        }
 
-        if (!diagnosticOutputRegistered) {
-            ProcessHelper.addDebugCallback(line -> {
-                int index = diagnosticLineCount.getAndIncrement();
-                if (index < 250) {
+        Callback<String> outputCallback = tsoaRedirectorRequested
+                ? line -> {
+                    TsoaRedirectorV2Log.append(context, line);
                     android.util.Log.e("TSOA_FE_DIAG", line);
                 }
-                else if (index == 250) {
-                    android.util.Log.e("TSOA_FE_DIAG", "Output truncated after 250 lines.");
-                }
-            });
-            diagnosticOutputRegistered = true;
-        }
+                : null;
 
         return ProcessHelper.exec(command, envVars, rootDir, (status) -> {
             android.util.Log.e("TSOA_FE_DIAG",
                     "Guest process exited with status=" + status + " command=" + command);
+            if (tsoaRedirectorRequested) {
+                TsoaRedirectorV2Log.append(context,
+                        "Guest process exited with status=" + status);
+            }
             synchronized (lock) {
                 pid = -1;
             }
             if (terminationCallback != null) terminationCallback.call(status);
-        });
+        }, outputCallback);
     }
 
     private void extractBox64File() {
