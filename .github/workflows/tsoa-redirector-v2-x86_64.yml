@@ -63,10 +63,12 @@ jobs:
 
           echo '===== EXPORTED REDIRECTOR SYMBOLS ====='
           nm -D --defined-only "$LIB" | sort | tee build/tsoa-redirector-v2-x86_64/exports.txt
+
           echo '===== SHA256 ====='
           sha256sum "$LIB" | tee build/tsoa-redirector-v2-x86_64/sha256.txt
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload V2 artifact
+        uses: actions/upload-artifact@v4
         with:
           name: tsoa-redirector-v2-x86_64-box64-abi
           path: build/tsoa-redirector-v2-x86_64/
