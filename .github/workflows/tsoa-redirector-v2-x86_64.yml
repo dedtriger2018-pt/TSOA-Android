@@ -1,4 +1,4 @@
-name: Build TSOA Redirector V2 x86_64
+name: Build TSOA Redirector V2 x86_64 (Box64 ABI)
 
 on:
   workflow_dispatch:
@@ -12,38 +12,63 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    # Keep the host runner current; compile inside a pinned older glibc sysroot.
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Compile Redirector V2
+      - name: Compile with glibc 2.31 (keep dlsym in libdl.so.2)
         run: |
           set -eu
           mkdir -p build/tsoa-redirector-v2-x86_64
-          gcc -shared -fPIC -O2 -Wall -Wextra -Werror -Wl,-z,defs \
-            -o build/tsoa-redirector-v2-x86_64/libtsoa_redirector_v2_x86_64.so \
-            tools/tsoa_redirect_probe/tsoa_redirector_v2.c \
-            -ldl
 
-      - name: Validate ELF architecture and dependencies
+          docker run --rm --platform linux/amd64 \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            ubuntu:20.04 bash -lc '
+              set -eu
+              sed -i \
+                -e "s|archive.ubuntu.com/ubuntu|old-releases.ubuntu.com/ubuntu|g" \
+                -e "s|security.ubuntu.com/ubuntu|old-releases.ubuntu.com/ubuntu|g" \
+                /etc/apt/sources.list
+              apt-get -o Acquire::Check-Valid-Until=false update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                gcc libc6-dev binutils
+              gcc -shared -fPIC -O2 -Wall -Wextra -Werror -Wl,-z,defs \
+                -o build/tsoa-redirector-v2-x86_64/libtsoa_redirector_v2_x86_64.so \
+                tools/tsoa_redirect_probe/tsoa_redirector_v2.c \
+                -ldl
+            '
+
+      - name: Validate Box64-facing ABI
         run: |
           set -eu
           LIB=build/tsoa-redirector-v2-x86_64/libtsoa_redirector_v2_x86_64.so
+
           readelf -h "$LIB" | tee build/tsoa-redirector-v2-x86_64/elf-header.txt
           grep -q 'Class:.*ELF64' build/tsoa-redirector-v2-x86_64/elf-header.txt
           grep -q 'Machine:.*X86-64' build/tsoa-redirector-v2-x86_64/elf-header.txt
-          readelf -d "$LIB" | tee build/tsoa-redirector-v2-x86_64/dynamic.txt
-          readelf --version-info "$LIB" | tee build/tsoa-redirector-v2-x86_64/symbol-versions.txt
-          echo '===== EXPORTED REDIRECTOR SYMBOLS ====='
-          nm -D --defined-only "$LIB" | sort
-          echo '===== SHA256 ====='
-          sha256sum "$LIB"
 
-      - name: Upload V2 artifact
-        uses: actions/upload-artifact@v4
+          readelf -d "$LIB" | tee build/tsoa-redirector-v2-x86_64/dynamic.txt
+          grep -q 'Shared library: \[libc.so.6\]' build/tsoa-redirector-v2-x86_64/dynamic.txt
+          grep -q 'Shared library: \[libdl.so.2\]' build/tsoa-redirector-v2-x86_64/dynamic.txt
+
+          readelf --version-info "$LIB" | tee build/tsoa-redirector-v2-x86_64/symbol-versions.txt
+          readelf --dyn-syms --wide "$LIB" | tee build/tsoa-redirector-v2-x86_64/dynsym.txt
+          grep -q 'dlsym@GLIBC_2.2.5' build/tsoa-redirector-v2-x86_64/dynsym.txt
+          if grep -q 'GLIBC_2.34' build/tsoa-redirector-v2-x86_64/symbol-versions.txt; then
+            echo 'Unexpected GLIBC_2.34 dependency; refusing artifact.' >&2
+            exit 1
+          fi
+
+          echo '===== EXPORTED REDIRECTOR SYMBOLS ====='
+          nm -D --defined-only "$LIB" | sort | tee build/tsoa-redirector-v2-x86_64/exports.txt
+          echo '===== SHA256 ====='
+          sha256sum "$LIB" | tee build/tsoa-redirector-v2-x86_64/sha256.txt
+
+      - uses: actions/upload-artifact@v4
         with:
-          name: tsoa-redirector-v2-x86_64
+          name: tsoa-redirector-v2-x86_64-box64-abi
           path: build/tsoa-redirector-v2-x86_64/
           if-no-files-found: error
           retention-days: 14
