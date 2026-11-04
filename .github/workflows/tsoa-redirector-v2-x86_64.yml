@@ -1,0 +1,49 @@
+name: Build TSOA Redirector V2 x86_64
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/tsoa_redirect_probe/tsoa_redirector_v2.c'
+      - '.github/workflows/tsoa-redirector-v2-x86_64.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Compile Redirector V2
+        run: |
+          set -eu
+          mkdir -p build/tsoa-redirector-v2-x86_64
+          gcc -shared -fPIC -O2 -Wall -Wextra -Werror -Wl,-z,defs \
+            -o build/tsoa-redirector-v2-x86_64/libtsoa_redirector_v2_x86_64.so \
+            tools/tsoa_redirect_probe/tsoa_redirector_v2.c \
+            -ldl
+
+      - name: Validate ELF architecture and dependencies
+        run: |
+          set -eu
+          LIB=build/tsoa-redirector-v2-x86_64/libtsoa_redirector_v2_x86_64.so
+          readelf -h "$LIB" | tee build/tsoa-redirector-v2-x86_64/elf-header.txt
+          grep -q 'Class:.*ELF64' build/tsoa-redirector-v2-x86_64/elf-header.txt
+          grep -q 'Machine:.*X86-64' build/tsoa-redirector-v2-x86_64/elf-header.txt
+          readelf -d "$LIB" | tee build/tsoa-redirector-v2-x86_64/dynamic.txt
+          readelf --version-info "$LIB" | tee build/tsoa-redirector-v2-x86_64/symbol-versions.txt
+          echo '===== EXPORTED REDIRECTOR SYMBOLS ====='
+          nm -D --defined-only "$LIB" | sort
+          echo '===== SHA256 ====='
+          sha256sum "$LIB"
+
+      - name: Upload V2 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsoa-redirector-v2-x86_64
+          path: build/tsoa-redirector-v2-x86_64/
+          if-no-files-found: error
+          retention-days: 14
