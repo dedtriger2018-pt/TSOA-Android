@@ -6,6 +6,7 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.widget.TextView;
 
+import com.winlator.MainActivity;
 import com.winlator.R;
 
 public class PreloaderDialog {
@@ -14,6 +15,24 @@ public class PreloaderDialog {
 
     public PreloaderDialog(Activity activity) {
         this.activity = activity;
+    }
+
+    static void applyDedicatedVisibility(Activity activity, Dialog dialog) {
+        // The dedicated lobby supplies the visible status; retain dialog/task lifecycle.
+        boolean dedicated = activity instanceof MainActivity
+                ? ((MainActivity)activity).isDedicatedLauncherMode()
+                : activity.getIntent() != null &&
+                  activity.getIntent().getBooleanExtra("tsoa_fe_mode", false);
+        if (!dedicated) return;
+
+        Window window = dialog.getWindow();
+        if (window != null) {
+            WindowManager.LayoutParams attributes = window.getAttributes();
+            attributes.alpha = 0f;
+            attributes.dimAmount = 0f;
+            window.setAttributes(attributes);
+            window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        }
     }
 
     private void create() {
@@ -36,6 +55,7 @@ public class PreloaderDialog {
         close();
         if (dialog == null) create();
         ((TextView)dialog.findViewById(R.id.TextView)).setText(textResId);
+        applyDedicatedVisibility(activity, dialog);
         dialog.show();
     }
 

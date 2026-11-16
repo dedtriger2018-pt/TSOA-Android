@@ -5,21 +5,24 @@ import android.app.Activity;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.RippleDrawable;
+import android.content.res.ColorStateList;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.view.MenuItem;
 import android.view.Gravity;
 import android.view.View;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
+import android.view.HapticFeedbackConstants;
+import android.view.MotionEvent;
+import android.view.WindowManager;
+import android.widget.FrameLayout;
 import android.widget.Button;
-import android.widget.Spinner;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -52,6 +55,13 @@ import com.winlator.container.GraphicsDrivers;
 import com.winlator.XServerDisplayActivity;
 import com.winlator.core.PreloaderDialog;
 import com.winlator.xenvironment.RootFSInstaller;
+import com.winlator.tsoa.EcoBackdropView;
+import com.winlator.tsoa.TsoaOptions;
+import com.winlator.tsoa.TsoaAmbience;
+import com.winlator.tsoa.TsoaOptionsDialog;
+import com.winlator.tsoa.TsoaMaintenance;
+import com.winlator.tsoa.TsoaGameControls;
+import com.winlator.inputcontrols.ControlsProfile;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -79,7 +89,6 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     private static final int REQUEST_GAME_FOLDER = 51;
     private static final String LAUNCHER_PREFS = "naninovel_launcher";
     private static final String PREF_CONTAINER_ID = "container_id";
-    private static final String PREF_SCREEN_SIZE = "screen_size";
     private boolean dedicatedLauncher = false;
     private boolean rootFSReady = false;
     private boolean importInProgress = false;
@@ -88,17 +97,34 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     private TextView launcherDetail;
     private ProgressBar launcherProgress;
     private Button launcherAction;
-    private Button launcherImportAgain;
-    private Spinner launcherResolution;
-    private String[] launcherResolutionValues;
     private final java.util.concurrent.ExecutorService importExecutor = Executors.newSingleThreadExecutor();
+    private FrameLayout launcherRoot;
+    private LinearLayout launcherHeader;
+    private LinearLayout launcherMenu;
+    private EcoBackdropView ecoBackdrop;
+    private TsoaMaintenance maintenance;
+    private TsoaAmbience ambience;
+    private int launcherInsetLeft;
+    private int launcherInsetTop;
+    private int launcherInsetRight;
+    private int launcherInsetBottom;
+    private boolean launcherBusy;
+    private boolean autoLaunchConsumed;
+    private boolean autoLaunchScheduled;
+    private boolean launcherVisible;
+    private final Runnable autoLaunch = () -> {
+        autoLaunchScheduled = false;
+        if (!isFinishing() && rootFSReady && !importInProgress && !gameLaunchActive) {
+            ensureDedicatedContainerAndLaunch();
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         AppUtils.setActivityTheme(this);
         super.onCreate(savedInstanceState);
 
-        dedicatedLauncher = true;
+        dedicatedLauncher = !getIntent().getBooleanExtra("edit_input_controls", false);
         if (dedicatedLauncher) {
             setupDedicatedLauncher();
             return;
@@ -144,16 +170,19 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
 
     private void setupDedicatedLauncher() {
         launcherPreferences = getSharedPreferences(LAUNCHER_PREFS, MODE_PRIVATE);
+        maintenance = new TsoaMaintenance(this);
         buildDedicatedLauncherUI();
         setLauncherStatus("Preparando o ambiente de compatibilidade...", "A instalação inicial do runtime pode levar alguns minutos.", true);
         RootFSInstaller.installIfNeeded(this, (success) -> {
+            if (isFinishing() || isDestroyed()) return;
             rootFSReady = success;
             if (!success) {
                 setLauncherStatus("Não foi possível preparar o runtime.", "Verifique o espaço livre e tente novamente.", false);
-                launcherAction.setText("TENTAR NOVAMENTE");
+                setLauncherActionText("TENTAR NOVAMENTE");
                 launcherAction.setOnClickListener((view) -> {
                     setLauncherStatus("Preparando o ambiente...", "Extraindo os componentes do Winlator.", true);
                     RootFSInstaller.installIfNeeded(this, (retrySuccess) -> {
+                        if (isFinishing() || isDestroyed()) return;
                         rootFSReady = retrySuccess;
                         if (retrySuccess) onLauncherRuntimeReady();
                         else setLauncherStatus("Falha na preparação.", "Confira o armazenamento disponível e tente novamente.", false);
@@ -168,147 +197,251 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     private android.content.SharedPreferences launcherPreferences;
 
     private void buildDedicatedLauncherUI() {
-        int bg = Color.rgb(18, 15, 18);
-        int accent = Color.rgb(190, 62, 55);
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(dp(28), dp(28), dp(28), dp(24));
-        root.setBackgroundColor(bg);
+        launcherRoot = new FrameLayout(this);
+        launcherRoot.setBackgroundColor(Color.rgb(9, 18, 22));
+        ecoBackdrop = new EcoBackdropView(this);
+        ambience = new TsoaAmbience(this);
+        launcherRoot.addView(ecoBackdrop, new FrameLayout.LayoutParams(-1, -1));
+        launcherRoot.setOnTouchListener((view, event) -> {
+            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) cancelAutoLaunch();
+            return false;
+        });
 
-        ImageView icon = new ImageView(this);
-        icon.setImageResource(R.mipmap.ic_launcher);
-        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(112), dp(112));
-        iconParams.bottomMargin = dp(18);
-        root.addView(icon, iconParams);
-
+        launcherHeader = new LinearLayout(this);
+        launcherHeader.setOrientation(LinearLayout.VERTICAL);
+        launcherHeader.setGravity(Gravity.CENTER_HORIZONTAL);
+        launcherHeader.setPadding(0, dp(2), 0, dp(2));
         TextView title = new TextView(this);
         title.setText("TSOA_FE");
-        title.setTextColor(Color.WHITE);
-        title.setTextSize(25);
-        title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        title.setTextColor(Color.rgb(213, 225, 224));
+        title.setTextSize(16);
+        title.setLetterSpacing(0.35f);
         title.setGravity(Gravity.CENTER);
-        root.addView(title, new LinearLayout.LayoutParams(-1, -2));
-
+        title.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
+        launcherHeader.addView(title, new LinearLayout.LayoutParams(-1, -2));
         TextView subtitle = new TextView(this);
-        subtitle.setText("MOBILE LAUNCHER");
-        subtitle.setTextColor(Color.rgb(184, 169, 165));
-        subtitle.setTextSize(11);
-        subtitle.setLetterSpacing(0.18f);
+        subtitle.setText("The Street of Adrift");
+        subtitle.setTextColor(Color.rgb(165, 182, 184));
+        subtitle.setTextSize(10);
+        subtitle.setLetterSpacing(0.15f);
         subtitle.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(-1, -2);
-        subtitleParams.topMargin = dp(5);
-        subtitleParams.bottomMargin = dp(18);
-        root.addView(subtitle, subtitleParams);
+        subtitleParams.topMargin = dp(8);
+        launcherHeader.addView(subtitle, subtitleParams);
+        launcherRoot.addView(launcherHeader, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
 
-        String[] allScreenSizes = getResources().getStringArray(R.array.screen_size_entries);
-        String[] resolutionLabels = java.util.Arrays.copyOfRange(allScreenSizes, 1, allScreenSizes.length);
-        launcherResolutionValues = new String[resolutionLabels.length];
+        launcherMenu = new LinearLayout(this);
+        launcherMenu.setOrientation(LinearLayout.VERTICAL);
+        launcherMenu.setGravity(Gravity.CENTER_HORIZONTAL);
+        launcherAction = ecoButton("JOGAR", 14, Color.rgb(220, 233, 230));
+        launcherAction.setLetterSpacing(0.3f);
+        launcherMenu.addView(launcherAction, new LinearLayout.LayoutParams(-1, dp(48)));
 
-        for (int i = 0; i < resolutionLabels.length; i++) {
-            String label = resolutionLabels[i].trim();
-            launcherResolutionValues[i] = i == 0 ? "native" : label.split("\\s+")[0];
-        }
-
-        TextView resolutionLabel = new TextView(this);
-        resolutionLabel.setText("RESOLUÇÃO DO JOGO");
-        resolutionLabel.setTextColor(Color.rgb(210, 190, 185));
-        resolutionLabel.setTextSize(12);
-        resolutionLabel.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams resolutionLabelParams = new LinearLayout.LayoutParams(-1, -2);
-        resolutionLabelParams.bottomMargin = dp(6);
-        root.addView(resolutionLabel, resolutionLabelParams);
-
-        launcherResolution = new Spinner(this);
-        ArrayAdapter<String> resolutionAdapter = new ArrayAdapter<>(
-            this, android.R.layout.simple_spinner_item, resolutionLabels);
-        resolutionAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        launcherResolution.setAdapter(resolutionAdapter);
-        root.addView(launcherResolution, new LinearLayout.LayoutParams(-1, dp(48)));
-
-        String savedResolution = launcherPreferences.getString(PREF_SCREEN_SIZE, "960x544");
-        int selectedResolutionIndex = Math.min(5, resolutionLabels.length - 1);
-        for (int i = 0; i < launcherResolutionValues.length; i++) {
-            if (launcherResolutionValues[i].equals(savedResolution)) {
-                selectedResolutionIndex = i;
-                break;
+        Button options = ecoButton("Configurações", 12, Color.rgb(174, 194, 194));
+        options.setLetterSpacing(0.12f);
+        LinearLayout.LayoutParams optionsParams = new LinearLayout.LayoutParams(-1, dp(48));
+        optionsParams.topMargin = dp(8);
+        launcherMenu.addView(options, optionsParams);
+        options.setOnClickListener(view -> {
+            feedback(view);
+            cancelAutoLaunch();
+            showLauncherOptions();
+        });
+        Button about = ecoButton("Sobre", 12, Color.rgb(174, 194, 194));
+        about.setLetterSpacing(0.12f);
+        launcherMenu.addView(about, new LinearLayout.LayoutParams(-1, dp(48)));
+        about.setOnClickListener(view -> {
+            feedback(view);
+            cancelAutoLaunch();
+            try {
+                startActivity(new Intent(Intent.ACTION_VIEW,
+                    Uri.parse("https://store.steampowered.com/app/1672670/")));
             }
-        }
-        launcherResolution.setSelection(selectedResolutionIndex, false);
-        launcherResolution.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                launcherPreferences.edit()
-                    .putString(PREF_SCREEN_SIZE, launcherResolutionValues[position]).apply();
+            catch (android.content.ActivityNotFoundException error) {
+                AppUtils.showToast(this, "Instale um navegador para abrir a página da Steam.");
             }
-
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
         });
 
         launcherStatus = new TextView(this);
-        launcherStatus.setTextColor(Color.WHITE);
-        launcherStatus.setTextSize(16);
+        launcherStatus.setTextColor(Color.rgb(192, 207, 205));
+        launcherStatus.setTextSize(11);
         launcherStatus.setGravity(Gravity.CENTER);
-        root.addView(launcherStatus, new LinearLayout.LayoutParams(-1, -2));
-
+        launcherStatus.setMaxLines(1);
+        launcherStatus.setEllipsize(TextUtils.TruncateAt.END);
+        launcherStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        launcherStatus.setPadding(dp(8), dp(8), dp(8), 0);
+        launcherMenu.addView(launcherStatus, new LinearLayout.LayoutParams(-1, -2));
         launcherDetail = new TextView(this);
-        launcherDetail.setTextColor(Color.rgb(174, 165, 165));
-        launcherDetail.setTextSize(12);
+        launcherDetail.setTextColor(Color.rgb(148, 171, 173));
+        launcherDetail.setTextSize(10);
         launcherDetail.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(-1, -2);
-        detailParams.topMargin = dp(10);
-        root.addView(launcherDetail, detailParams);
-
+        launcherDetail.setMaxLines(2);
+        launcherDetail.setEllipsize(TextUtils.TruncateAt.END);
+        launcherDetail.setPadding(dp(8), dp(4), dp(8), 0);
+        launcherMenu.addView(launcherDetail, new LinearLayout.LayoutParams(-1, -2));
         launcherProgress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        launcherProgress.setProgressTintList(ColorStateList.valueOf(Color.rgb(172, 157, 124)));
+        launcherProgress.setIndeterminateTintList(ColorStateList.valueOf(Color.rgb(172, 157, 124)));
         launcherProgress.setIndeterminate(true);
-        LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(-1, dp(4));
-        progressParams.topMargin = dp(24);
-        progressParams.bottomMargin = dp(24);
-        root.addView(launcherProgress, progressParams);
-
-        launcherAction = new Button(this);
-        launcherAction.setAllCaps(false);
-        launcherAction.setText("PREPARANDO...");
-        launcherAction.setTextColor(Color.WHITE);
-        launcherAction.setTextSize(15);
-        GradientDrawable buttonBackground = new GradientDrawable();
-        buttonBackground.setColor(accent);
-        buttonBackground.setCornerRadius(dp(12));
-        launcherAction.setBackground(buttonBackground);
-        root.addView(launcherAction, new LinearLayout.LayoutParams(-1, dp(54)));
-
-        launcherImportAgain = new Button(this);
-        launcherImportAgain.setAllCaps(false);
-        launcherImportAgain.setText("IMPORTAR OUTRA PASTA");
-        launcherImportAgain.setTextColor(Color.rgb(210, 190, 185));
-        launcherImportAgain.setTextSize(12);
-        launcherImportAgain.setVisibility(View.GONE);
-        launcherImportAgain.setOnClickListener((view) -> openGameFolderPicker());
-        root.addView(launcherImportAgain, new LinearLayout.LayoutParams(-1, dp(48)));
-
-        TextView footer = new TextView(this);
-        footer.setText("ADRENO  •  DIRECT3D 11  •  DXVK");
-        footer.setTextColor(Color.rgb(105, 94, 94));
-        footer.setTextSize(10);
-        footer.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams footerParams = new LinearLayout.LayoutParams(-1, -2);
-        footerParams.topMargin = dp(24);
-        root.addView(footer, footerParams);
-
-        setContentView(root);
+        launcherProgress.setVisibility(View.GONE);
+        LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(dp(190), dp(2));
+        progressParams.topMargin = dp(10);
+        launcherMenu.addView(launcherProgress, progressParams);
+        launcherRoot.addView(launcherMenu, new FrameLayout.LayoutParams(dp(276), -2,
+            Gravity.TOP | Gravity.CENTER_HORIZONTAL));
+        launcherMenu.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (bottom - top != oldBottom - oldTop) {
+                layoutEcoContent(launcherInsetLeft, launcherInsetTop, launcherInsetRight, launcherInsetBottom);
+            }
+        });
+        launcherRoot.setOnApplyWindowInsetsListener((view, insets) -> {
+            layoutEcoContent(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(),
+                insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
+            return insets;
+        });
+        launcherRoot.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
+                layoutEcoContent(launcherInsetLeft, launcherInsetTop, launcherInsetRight, launcherInsetBottom);
+            }
+        });
+        setContentView(launcherRoot);
+        applyLauncherOptions();
+        layoutEcoContent(0, 0, 0, 0);
     }
 
-    private String getLauncherScreenSize() {
-        if (launcherResolution != null && launcherResolutionValues != null) {
-            int position = launcherResolution.getSelectedItemPosition();
-            if (position >= 0 && position < launcherResolutionValues.length) {
-                String value = launcherResolutionValues[position];
-                launcherPreferences.edit().putString(PREF_SCREEN_SIZE, value).apply();
-                return value;
+    private Button ecoButton(String text, float size, int color) {
+        Button button = new Button(this);
+        button.setText(text);
+        button.setTextSize(size);
+        button.setTextColor(color);
+        button.setAllCaps(false);
+        button.setGravity(Gravity.CENTER);
+        button.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
+        button.setPadding(dp(16), 0, dp(16), 0);
+        button.setMinHeight(dp(48));
+        button.setMinimumHeight(dp(48));
+        button.setStateListAnimator(null);
+        button.setBackground(new RippleDrawable(ColorStateList.valueOf(Color.argb(28, 183, 211, 207)),
+            new ColorDrawable(Color.TRANSPARENT), null));
+        return button;
+    }
+
+    private void layoutEcoContent(int left, int top, int right, int bottom) {
+        if (launcherRoot == null) return;
+        launcherInsetLeft = left;
+        launcherInsetTop = top;
+        launcherInsetRight = right;
+        launcherInsetBottom = bottom;
+        int width = launcherRoot.getWidth() > 0 ? launcherRoot.getWidth() : getResources().getDisplayMetrics().widthPixels;
+        int height = launcherRoot.getHeight() > 0 ? launcherRoot.getHeight() : getResources().getDisplayMetrics().heightPixels;
+        int usableWidth = Math.max(dp(160), width - left - right);
+        int usableHeight = Math.max(dp(200), height - top - bottom);
+        boolean landscape = usableWidth > usableHeight;
+        FrameLayout.LayoutParams headerParams = (FrameLayout.LayoutParams)launcherHeader.getLayoutParams();
+        headerParams.width = usableWidth;
+        headerParams.leftMargin = left;
+        headerParams.rightMargin = right;
+        headerParams.topMargin = top + Math.round(usableHeight * (landscape ? 0.16f : 0.34f));
+        launcherHeader.setLayoutParams(headerParams);
+
+        FrameLayout.LayoutParams menuParams = (FrameLayout.LayoutParams)launcherMenu.getLayoutParams();
+        menuParams.width = Math.min(dp(320), usableWidth - dp(32));
+        menuParams.leftMargin = left;
+        menuParams.rightMargin = right;
+        int preferredMenuTop = top + Math.round(usableHeight * (landscape ? 0.43f : 0.49f)) - dp(24);
+        int minimumMenuTop = headerParams.topMargin + Math.max(dp(40), launcherHeader.getMeasuredHeight()) - dp(6);
+        int maximumMenuTop = top + usableHeight - dp(8) - launcherMenu.getMeasuredHeight();
+        menuParams.topMargin = Math.max(minimumMenuTop, Math.min(preferredMenuTop, maximumMenuTop));
+        menuParams.bottomMargin = bottom + dp(8);
+        launcherMenu.setLayoutParams(menuParams);
+    }
+
+    public boolean isDedicatedLauncherMode() { return dedicatedLauncher; }
+
+    private String getLauncherScreenSize() { return new TsoaOptions(this).getScreenSize(); }
+
+    private void feedback(View view) {
+        if (new TsoaOptions(this).isHaptics()) view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+    }
+
+    private void setLobbyActive(boolean active) {
+        if (ecoBackdrop != null) ecoBackdrop.setActive(active);
+        if (ambience != null) ambience.setActive(active);
+    }
+
+    private void setLauncherActionText(CharSequence text) {
+        launcherAction.setText(text);
+        if (ecoBackdrop != null) ecoBackdrop.setReflectionAction(text);
+    }
+
+    private void applyLauncherOptions() {
+        if (!dedicatedLauncher || ecoBackdrop == null) return;
+        TsoaOptions options = new TsoaOptions(this);
+        ecoBackdrop.applyOptions(options);
+        if (ambience != null) ambience.applyOptions(options);
+        if (options.isKeepScreenOn()) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        if (options.isFullscreen()) AppUtils.hideSystemUI(this);
+        else {
+            getWindow().getDecorView().setOnSystemUiVisibilityChangeListener(null);
+            getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                getWindow().setDecorFitsSystemWindows(true);
+                android.view.WindowInsetsController controller = getWindow().getDecorView().getWindowInsetsController();
+                if (controller != null) controller.show(android.view.WindowInsets.Type.systemBars());
             }
         }
-        return launcherPreferences.getString(PREF_SCREEN_SIZE, "960x544");
+        launcherRoot.requestApplyInsets();
+    }
+
+    private void showLauncherOptions() {
+        TsoaOptionsDialog.show(this, this::applyLauncherOptions, new TsoaOptionsDialog.Actions() {
+            @Override public void editControls() {
+                try {
+                    ControlsProfile profile = TsoaGameControls.getEditableProfile(MainActivity.this, new TsoaOptions(MainActivity.this));
+                    if (profile == null) {
+                        AppUtils.showToast(MainActivity.this, "Selecione ESC, RTS ou um perfil antes de editar.");
+                        return;
+                    }
+                    Intent editor = new Intent(MainActivity.this, ControlsEditorActivity.class);
+                    editor.putExtra("profile_id", profile.id);
+                    startActivityForResult(editor, EDIT_INPUT_CONTROLS_REQUEST_CODE);
+                }
+                catch (Exception error) {
+                    AppUtils.showToast(MainActivity.this, "Não foi possível abrir os controles: " + error.getMessage());
+                }
+            }
+            @Override public void resetControls() { TsoaGameControls.resetSelectedLayout(MainActivity.this); }
+            @Override public void importGame() { if (canMaintainGame()) openGameFolderPicker(); }
+            @Override public void exportSaves() { if (canMaintainGame()) maintenance.exportSaves(); }
+            @Override public void importSaves() { if (canMaintainGame()) maintenance.importSaves(); }
+            @Override public void verifyFiles() { if (canMaintainGame()) maintenance.verifyFiles(); }
+            @Override public void exportDiagnostics() { maintenance.exportDiagnostics(); }
+        });
+    }
+
+    private boolean canMaintainGame() {
+        if (rootFSReady && !launcherBusy && !gameLaunchActive && !importInProgress && !maintenance.isBusy()) return true;
+        AppUtils.showToast(this, "Aguarde a preparação terminar antes de alterar os arquivos do jogo.");
+        return false;
+    }
+
+    private void cancelAutoLaunch() {
+        if (launcherRoot != null) launcherRoot.removeCallbacks(autoLaunch);
+        autoLaunchScheduled = false;
+        autoLaunchConsumed = true;
+    }
+
+    private void maybeAutoLaunch() {
+        if (launcherVisible && rootFSReady && !launcherBusy && !autoLaunchConsumed &&
+            !maintenance.isBusy() && new TsoaOptions(this).isAutoLaunch() &&
+            GameImportManager.isValidGameDirectory(GameImportManager.getGameDirectory(this))) {
+            autoLaunchConsumed = true;
+            autoLaunchScheduled = true;
+            AppUtils.showToast(this, "Abertura automática em 2 segundos. Toque no fundo ou use Voltar para cancelar.");
+            launcherRoot.postDelayed(autoLaunch, 2000L);
+        }
     }
 
     private int dp(float value) {
@@ -319,25 +452,36 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         if (launcherStatus == null) return;
         launcherStatus.setText(status);
         launcherDetail.setText(detail);
-        launcherProgress.setVisibility(busy ? View.VISIBLE : View.GONE);
+        launcherBusy = busy;
+        launcherProgress.setVisibility(busy && importInProgress ? View.VISIBLE : View.GONE);
         launcherAction.setEnabled(!busy);
-        if (busy) launcherAction.setText("AGUARDE...");
+        launcherAction.setAlpha(busy ? 0.4f : 1.0f);
+        // Initialization is intentionally silent; retain progress only for a user-requested import.
+        launcherStatus.setVisibility(!busy || importInProgress ? View.VISIBLE : View.GONE);
+        launcherDetail.setVisibility(!busy || importInProgress ? View.VISIBLE : View.GONE);
     }
 
     private void onLauncherRuntimeReady() {
+        if (isFinishing() || isDestroyed()) return;
+        applyLauncherOptions();
         File gameDir = GameImportManager.getGameDirectory(this);
-boolean gameReady = GameImportManager.isValidGameDirectory(gameDir);
-        setLauncherStatus(gameReady ? "TSOA ESTÁ PRONTO" : "SELECIONE A PASTA DO JOGO",
-            gameReady ? "O ambiente está configurado para inicialização direta." : "Escolha a pasta game que contém TSOA.exe e TSOA_Data.", false);
-        launcherAction.setText(gameReady ? "JOGAR" : "IMPORTAR JOGO");
+        boolean gameReady = GameImportManager.isValidGameDirectory(gameDir);
+        setLauncherStatus(gameReady ? "" : "SELECIONE A PASTA DO JOGO",
+            gameReady ? "" : "Escolha a pasta que contém TSOA.exe e TSOA_Data.", false);
+        launcherStatus.setVisibility(gameReady ? View.GONE : View.VISIBLE);
+        launcherDetail.setVisibility(gameReady ? View.GONE : View.VISIBLE);
+        setLauncherActionText(gameReady ? "JOGAR" : "IMPORTAR JOGO");
         launcherAction.setOnClickListener((view) -> {
+            feedback(view);
+            cancelAutoLaunch();
             if (GameImportManager.isValidGameDirectory(GameImportManager.getGameDirectory(this))) ensureDedicatedContainerAndLaunch();
             else openGameFolderPicker();
         });
-        launcherImportAgain.setVisibility(gameReady ? View.VISIBLE : View.GONE);
+        maybeAutoLaunch();
     }
 
     private void openGameFolderPicker() {
+        cancelAutoLaunch();
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION |
             Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
@@ -346,9 +490,8 @@ boolean gameReady = GameImportManager.isValidGameDirectory(gameDir);
 
     private void importGameFolder(Uri treeUri) {
         importInProgress = true;
-        launcherImportAgain.setVisibility(View.GONE);
         launcherAction.setEnabled(false);
-        launcherAction.setText("IMPORTANDO...");
+        setLauncherActionText("IMPORTANDO...");
         launcherProgress.setVisibility(View.VISIBLE);
         launcherProgress.setIndeterminate(true);
         setLauncherStatus("IMPORTANDO A INSTALAÇÃO", "Copiando todos os arquivos sem alterar a estrutura original.", true);
@@ -356,6 +499,7 @@ boolean gameReady = GameImportManager.isValidGameDirectory(gameDir);
         importExecutor.execute(() -> {
             try {
                 GameImportManager.importTree(this, treeUri, (currentFile, copied, total) -> runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
                     launcherProgress.setIndeterminate(total <= 0);
                     if (total > 0) {
                         launcherProgress.setMax(1000);
@@ -368,15 +512,17 @@ boolean gameReady = GameImportManager.isValidGameDirectory(gameDir);
                 }));
                 runOnUiThread(() -> {
                     importInProgress = false;
+                    if (isFinishing() || isDestroyed()) return;
                     onLauncherRuntimeReady();
                 });
             }
             catch (Exception e) {
                 runOnUiThread(() -> {
                     importInProgress = false;
+                    if (isFinishing() || isDestroyed()) return;
                     launcherProgress.setVisibility(View.GONE);
                     setLauncherStatus("FALHA NA IMPORTAÇÃO", e.getMessage() != null ? e.getMessage() : "Não foi possível importar a pasta.", false);
-                    launcherAction.setText("TENTAR NOVAMENTE");
+                    setLauncherActionText("TENTAR NOVAMENTE");
                     launcherAction.setOnClickListener((view) -> openGameFolderPicker());
                 });
             }
@@ -384,7 +530,12 @@ boolean gameReady = GameImportManager.isValidGameDirectory(gameDir);
     }
 
     private void ensureDedicatedContainerAndLaunch() {
-        if (!rootFSReady || importInProgress) return;
+        if (isFinishing() || isDestroyed() || !launcherVisible) return;
+        if (!rootFSReady || importInProgress || gameLaunchActive || launcherBusy) return;
+        if (maintenance != null && maintenance.isBusy()) {
+            AppUtils.showToast(this, "Aguarde a operação dos saves terminar antes de jogar.");
+            return;
+        }
         File gameDir = GameImportManager.getGameDirectory(this);
         if (!GameImportManager.isValidGameDirectory(gameDir)) {
             onLauncherRuntimeReady();
@@ -415,22 +566,27 @@ boolean gameReady = GameImportManager.isValidGameDirectory(gameDir);
             data.put("box64Preset", Box64Preset.DEFAULT);
             data.put("startupSelection", Container.STARTUP_SELECTION_ESSENTIAL);
             manager.createContainerAsync(data, (createdContainer) -> {
+                if (isFinishing() || isDestroyed()) return;
                 if (createdContainer == null) {
                     setLauncherStatus("NÃO FOI POSSÍVEL CRIAR O CONTAINER", "Confira o runtime e o espaço livre.", false);
-                    launcherAction.setText("TENTAR NOVAMENTE");
+                    setLauncherActionText("TENTAR NOVAMENTE");
                     launcherAction.setOnClickListener((view) -> ensureDedicatedContainerAndLaunch());
                     return;
                 }
                 configureDedicatedContainer(createdContainer, gameDir);
                 createdContainer.saveData();
                 launcherPreferences.edit().putInt(PREF_CONTAINER_ID, createdContainer.id).apply();
+                if (!launcherVisible) {
+                    onLauncherRuntimeReady();
+                    return;
+                }
                 manager.activateContainer(createdContainer);
                 launchDedicatedGame(createdContainer);
             });
         }
         catch (JSONException e) {
             setLauncherStatus("ERRO DE CONFIGURAÇÃO", e.getMessage(), false);
-            launcherAction.setText("TENTAR NOVAMENTE");
+            setLauncherActionText("TENTAR NOVAMENTE");
             launcherAction.setOnClickListener((view) -> ensureDedicatedContainerAndLaunch());
         }
     }
@@ -447,10 +603,15 @@ boolean gameReady = GameImportManager.isValidGameDirectory(gameDir);
     }
 
     private void launchDedicatedGame(Container container) {
+        if (isFinishing() || isDestroyed()) return;
+        if (!launcherVisible) {
+            onLauncherRuntimeReady();
+            return;
+        }
         File executable = new File(GameImportManager.getGameDirectory(this), "TSOA.exe");
         if (!executable.isFile()) {
             setLauncherStatus("EXECUTÁVEL NÃO ENCONTRADO", "A instalação importada não contém TSOA.exe.", false);
-            launcherAction.setText("IMPORTAR NOVAMENTE");
+            setLauncherActionText("IMPORTAR NOVAMENTE");
             launcherAction.setOnClickListener((view) -> openGameFolderPicker());
             return;
         }
@@ -460,15 +621,16 @@ boolean gameReady = GameImportManager.isValidGameDirectory(gameDir);
         intent.putExtra("exec_path", executable.getAbsolutePath());
         intent.putExtra("tsoa_fe_mode", true);
         gameLaunchActive = true;
-        launcherImportAgain.setVisibility(View.GONE);
         setLauncherStatus("INICIANDO TSOA", "Carregando o runtime Windows e a renderização Vulkan.", true);
         try {
+            setLobbyActive(false);
             startActivity(intent);
         }
         catch (Exception e) {
+            setLobbyActive(true);
             gameLaunchActive = false;
             setLauncherStatus("FALHA AO INICIAR O JOGO", e.getMessage(), false);
-            launcherAction.setText("TENTAR NOVAMENTE");
+            setLauncherActionText("TENTAR NOVAMENTE");
             launcherAction.setOnClickListener((view) -> ensureDedicatedContainerAndLaunch());
         }
     }
@@ -476,10 +638,35 @@ boolean gameReady = GameImportManager.isValidGameDirectory(gameDir);
     @Override
     protected void onResume() {
         super.onResume();
-        if (dedicatedLauncher && gameLaunchActive) {
-            gameLaunchActive = false;
-            onLauncherRuntimeReady();
+        if (dedicatedLauncher) {
+            launcherVisible = true;
+            applyLauncherOptions();
+            setLobbyActive(true);
+            if (gameLaunchActive) {
+                gameLaunchActive = false;
+                onLauncherRuntimeReady();
+            }
+            else maybeAutoLaunch();
         }
+    }
+
+    @Override
+    protected void onPause() {
+        launcherVisible = false;
+        autoLaunchScheduled = false;
+        setLobbyActive(false);
+        if (launcherRoot != null) launcherRoot.removeCallbacks(autoLaunch);
+        super.onPause();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (launcherRoot != null) launcherRoot.removeCallbacks(autoLaunch);
+        setLobbyActive(false);
+        if (ambience != null) ambience.close();
+        if (maintenance != null) maintenance.close();
+        importExecutor.shutdown();
+        super.onDestroy();
     }
 
     @Override
@@ -501,6 +688,7 @@ boolean gameReady = GameImportManager.isValidGameDirectory(gameDir);
     @Override
     public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (maintenance != null && maintenance.onActivityResult(requestCode, resultCode, data)) return;
         if (dedicatedLauncher && requestCode == REQUEST_GAME_FOLDER) {
             if (resultCode == Activity.RESULT_OK && data != null && data.getData() != null) {
                 Uri treeUri = data.getData();
@@ -524,6 +712,10 @@ boolean gameReady = GameImportManager.isValidGameDirectory(gameDir);
     @Override
     public void onConfigurationChanged(@NonNull Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
+        if (dedicatedLauncher && launcherRoot != null) {
+            layoutEcoContent(0, 0, 0, 0);
+            launcherRoot.requestApplyInsets();
+        }
         if ((newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE ||
             newConfig.orientation == Configuration.ORIENTATION_PORTRAIT) && currentFragment instanceof BaseFileManagerFragment) {
             ((BaseFileManagerFragment)currentFragment).onOrientationChanged();
@@ -535,6 +727,11 @@ boolean gameReady = GameImportManager.isValidGameDirectory(gameDir);
         // In the dedicated edition, Back exits the launcher instead of exposing
         // the upstream Winlator containers/desktop navigation.
         if (dedicatedLauncher) {
+            if (autoLaunchScheduled) {
+                cancelAutoLaunch();
+                AppUtils.showToast(this, "Abertura automática cancelada.");
+                return;
+            }
             finish();
             return;
         }

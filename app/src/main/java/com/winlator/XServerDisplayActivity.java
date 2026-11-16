@@ -68,6 +68,10 @@ import com.winlator.inputcontrols.InputControlsManager;
 import com.winlator.math.Mathf;
 import com.winlator.renderer.GLRenderer;
 import com.winlator.services.ForegroundService;
+import com.winlator.tsoa.TsoaOptions;
+import com.winlator.tsoa.TsoaGameControls;
+import com.winlator.tsoa.TsoaGameControlsView;
+import com.winlator.tsoa.TsoaGameTouchpadView;
 import com.winlator.widget.FrameRating;
 import com.winlator.widget.InputControlsView;
 import com.winlator.widget.MagnifierView;
@@ -137,6 +141,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private Win32AppWorkarounds win32AppWorkarounds;
     private String screenEffectProfile;
     private boolean dedicatedLauncherMode;
+    private TsoaOptions tsoaOptions;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -146,6 +151,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         AppUtils.keepScreenOn(this);
         setContentView(R.layout.xserver_display_activity);
         dedicatedLauncherMode = getIntent().getBooleanExtra("tsoa_fe_mode", false);
+        if (dedicatedLauncherMode) {
+            tsoaOptions = new TsoaOptions(this);
+            TsoaGameControls.applyWindowOptions(this, tsoaOptions);
+        }
         ForegroundService.startSession(this);
 
         final PreloaderDialog preloaderDialog = new PreloaderDialog(this);
@@ -301,7 +310,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         super.onWindowFocusChanged(hasFocus);
 
         if (hasFocus) {
-            if (capturePointerOnExternalMouse) {
+            if (dedicatedLauncherMode) TsoaGameControls.applyWindowOptions(this, tsoaOptions);
+            if (capturePointerOnExternalMouse && inputControlsView != null && touchpadView != null) {
                 // Captured events are delivered to the focused view.
                 View captureView = inputControlsView.getVisibility() == View.VISIBLE ? inputControlsView : touchpadView;
                 if (captureView.requestFocus()) captureView.requestPointerCapture();
@@ -319,6 +329,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     @Override
     public void onResume() {
         super.onResume();
+        if (dedicatedLauncherMode && inputControlsView != null) applyDedicatedInputOptions();
         if (environment != null) {
             xServerView.onResume();
             environment.onResume();
@@ -551,6 +562,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             envVars.put("ANDROID_ASERVER_USE_SHM", ALSAClient.USE_SHARED_MEMORY ? "true" : "false");
 
             ALSAClient.Options options = ALSAClient.Options.fromKeyValueSet(audioDriverConfig);
+            // Session-local AudioTrack gain; never changes the phone's media volume.
+            if (dedicatedLauncherMode) options.volume = tsoaOptions.isMuted() ? 0.0f : tsoaOptions.getVolume() / 100.0f;
             environment.addComponent(new ALSAServerComponent(UnixSocketConfig.create(rootPath, UnixSocketConfig.ALSA_SERVER_PATH), options));
         }
         else if (audioDriver.equals(AudioDrivers.PULSEAUDIO)) {
@@ -563,6 +576,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 pulseAudioComponent.setPerformanceMode(audioDriverConfig.getInt("performanceMode", AudioDriverConfigDialog.DEFAULT_PERFORMANCE_MODE));
             }
             else envVars.put("PULSE_LATENCY_MSEC", AudioDriverConfigDialog.DEFAULT_LATENCY_MILLIS);
+            if (dedicatedLauncherMode) pulseAudioComponent.setVolume(tsoaOptions.isMuted() ? 0.0f : tsoaOptions.getVolume() / 100.0f);
             environment.addComponent(pulseAudioComponent);
         }
 
@@ -594,6 +608,11 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             envVars.put("TSOA_REDIRECTOR_V2", "1");
         }
 
+        if (dedicatedLauncherMode) {
+            // DXVK supports this limit directly; it does not modify the tested driver preset.
+            envVars.put("DXVK_FRAME_RATE", String.valueOf(tsoaOptions.getFpsLimit()));
+        }
+
         environment.startEnvironmentComponents();
 
         // A failed runtime preparation already requested exit; do not reopen its receiver.
@@ -618,11 +637,14 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         renderer.setForceWindowsFullscreen(shortcut != null && shortcut.getExtra("forceFullscreen", "0").equals("1"));
 
         xServer.setRenderer(renderer);
+        if (dedicatedLauncherMode && "stretch".equals(tsoaOptions.getAspectMode())) renderer.toggleFullscreen();
         rootView.addView(xServerView);
 
         globalCursorSpeed = preferences.getFloat("cursor_speed", 1.0f);
         capturePointerOnExternalMouse = preferences.getBoolean("capture_pointer_on_external_mouse", true);
-        touchpadView = new TouchpadView(this, xServer, capturePointerOnExternalMouse);
+        touchpadView = dedicatedLauncherMode ?
+                new TsoaGameTouchpadView(this, xServer, capturePointerOnExternalMouse, tsoaOptions) :
+                new TouchpadView(this, xServer, capturePointerOnExternalMouse);
         touchpadView.setSensitivity(globalCursorSpeed);
         touchpadView.setMoveCursorToTouchpoint(preferences.getBoolean("move_cursor_to_touchpoint", false));
         touchpadView.setFourFingersTapCallback(() -> {
@@ -630,7 +652,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         });
         rootView.addView(touchpadView);
 
-        inputControlsView = new InputControlsView(this);
+        inputControlsView = dedicatedLauncherMode ? new TsoaGameControlsView(this) : new InputControlsView(this);
         inputControlsView.setOverlayOpacity(preferences.getFloat("overlay_opacity", InputControlsView.DEFAULT_OVERLAY_OPACITY));
         inputControlsView.setTouchpadView(touchpadView);
         if (capturePointerOnExternalMouse) {
@@ -656,8 +678,22 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             }
         }
 
+        if (dedicatedLauncherMode) applyDedicatedInputOptions();
+
         if (MainActivity.DEBUG_MODE) rootView.addView(AppUtils.createDebugMsgTextView(this));
         AppUtils.observeSoftKeyboardVisibility(drawerLayout, renderer::setScreenOffsetYRelativeToCursor);
+    }
+
+    private void applyDedicatedInputOptions() {
+        if (xServer == null || touchpadView == null || inputControlsView == null) return;
+        globalCursorSpeed = tsoaOptions.getCursorSpeed();
+        inputControlsView.setOverlayOpacity(tsoaOptions.getControlsOpacity());
+        ControlsProfile profile = TsoaGameControls.getSelectedProfile(this, tsoaOptions);
+        if (profile != null) showInputControls(profile);
+        else hideInputControls();
+        touchpadView.setPointerButtonLeftEnabled(tsoaOptions.isTapToClick());
+        // Preserve the familiar two-finger right-click even with a touch profile shown.
+        touchpadView.setPointerButtonRightEnabled(true);
     }
 
     private void showInputControlsDialog() {

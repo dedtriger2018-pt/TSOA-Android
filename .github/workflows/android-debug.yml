@@ -55,6 +55,9 @@ jobs:
           python3 tools/tests/test_tsoa_runtime_config.py --json-jar "${RUNNER_TEMP}/tsoa-json.jar"
           python3 tools/tests/test_tsoa_box64_runtime.py --json-jar "${RUNNER_TEMP}/tsoa-json.jar"
 
+      - name: Validate TSOA save backups
+        run: python3 tools/tests/test_tsoa_save_archive.py
+
       - name: Build debug APK
         run: |
           chmod +x ./gradlew

@@ -58,6 +58,7 @@ public class DownloadProgressDialog {
             dialog.findViewById(R.id.BTCancel).setOnClickListener((v) -> onCancelCallback.run());
             dialog.findViewById(R.id.LLBottomBar).setVisibility(View.VISIBLE);
         }
+        PreloaderDialog.applyDedicatedVisibility(activity, dialog);
         dialog.show();
     }
 
