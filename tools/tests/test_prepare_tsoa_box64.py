@@ -18,6 +18,7 @@ SCRIPT = PROJECT / "tools/prepare_tsoa_box64.py"
 SOURCE = PROJECT / "app/src/main/assets/box64/box64-0.4.4.tzst"
 PATCHELF = os.environ.get("TSOA_TEST_PATCHELF", "patchelf")
 ROOTFS = "/data/user/0/com.naninovel.mobile/files/rootfs"
+PATCHED_SHA256 = "7753d56fda104ada63740626306735d4a9ed099aee2b999e2d214c3af9e9e207"
 
 
 def invoke(*args):
@@ -70,6 +71,9 @@ class Box64PreparationTests(unittest.TestCase):
         self.assertEqual(2, report["target"]["elf"]["type"])
         self.assertEqual(183, report["target"]["elf"]["machine"])
         self.assertEqual(hashlib.sha256(binary).hexdigest(), report["target"]["binary_sha256"])
+        self.assertEqual(PATCHED_SHA256, report["target"]["binary_sha256"])
+        self.assertEqual(30791208, len(binary))
+        self.assertEqual("patchelf 0.19.3", report["patchelf"])
         self.assertEqual(report["source"]["elf"]["executable_sections"], report["target"]["elf"]["executable_sections"])
         self.assertEqual(report["source"]["elf"]["tls"], report["target"]["elf"]["tls"])
         metadata = json.loads((self.directory / "tsoa-relocation.json").read_text())
@@ -100,9 +104,39 @@ class Box64PreparationTests(unittest.TestCase):
         source_copy = self.directory / "failure.tzst"
         shutil.copyfile(SOURCE, source_copy)
         original = source_copy.read_bytes()
+        tool = self.directory / "failing-patchelf"
+        tool.write_text('#!/bin/sh\nif [ "$1" = "--version" ]; then echo "patchelf 0.19.3"; exit 0; fi\nexit 23\n')
+        tool.chmod(0o755)
         result = invoke("--asset", source_copy, "--report", self.directory / "failure-report.json",
-                        "--patchelf", shutil.which("false"))
+                        "--patchelf", tool)
         self.assertNotEqual(0, result.returncode)
+        self.assertIn("Command failed (23)", result.stderr)
+        self.assertEqual(original, source_copy.read_bytes())
+
+    def test_distro_patchelf_version_is_rejected_before_modifying_asset(self):
+        source_copy = self.directory / "old-tool.tzst"
+        shutil.copyfile(SOURCE, source_copy)
+        original = source_copy.read_bytes()
+        tool = self.directory / "old-patchelf"
+        tool.write_text('#!/bin/sh\necho "patchelf 0.18.0"\n')
+        tool.chmod(0o755)
+        result = invoke("--asset", source_copy, "--report", self.directory / "old-tool-report.json",
+                        "--patchelf", tool)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("Require patchelf 0.19.3", result.stderr)
+        self.assertEqual(original, source_copy.read_bytes())
+
+    def test_unvalidated_output_is_rejected_even_if_tool_claims_correct_version(self):
+        source_copy = self.directory / "wrong-output.tzst"
+        shutil.copyfile(SOURCE, source_copy)
+        original = source_copy.read_bytes()
+        tool = self.directory / "no-op-patchelf"
+        tool.write_text('#!/bin/sh\nif [ "$1" = "--version" ]; then echo "patchelf 0.19.3"; fi\nexit 0\n')
+        tool.chmod(0o755)
+        result = invoke("--asset", source_copy, "--report", self.directory / "wrong-output-report.json",
+                        "--patchelf", tool)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("differs from the Honor X8 validated binary", result.stderr)
         self.assertEqual(original, source_copy.read_bytes())
 
     def test_metadata_path_cannot_overwrite_archive(self):

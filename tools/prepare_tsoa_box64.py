@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Relocate the bundled ARM64 Box64 ELF before assembling the dedicated APK.
 
-Requires host-side patchelf, zstd and readelf (binutils). Does not execute Box64.
+Requires the pinned host-side patchelf 0.19.3, zstd and readelf (binutils).
+Install patchelf using tools/patchelf-build-requirements.txt; distro patchelf
+0.18 produces a structurally valid ELF that segfaults on the Honor X8.
+Does not execute Box64. The generated binary must match the device-tested SHA.
 The tracked .tzst is replaced only in the build working tree; no Android-side
 patching or committed replacement binary is needed. Run --check after preparing.
 """
@@ -31,6 +34,9 @@ ROOTFS = "/data/user/0/com.naninovel.mobile/files/rootfs"
 OLD_ROOTFS = "/data/data/com.winlator/files/rootfs"
 ARCHIVE_SHA256 = "e1a34fed50bb38ef7fbf51ad5e5b9a76ec4c8178f9cfb4b9f6def0497f2f446c"
 BINARY_SHA256 = "9c1517392d5d1824cd64e8d26f7aed9fb28402b4fa23cbb24f564cf6e2608ca9"
+PATCHELF_VERSION = "patchelf 0.19.3"
+PATCHED_BINARY_SHA256 = "7753d56fda104ada63740626306735d4a9ed099aee2b999e2d214c3af9e9e207"
+PATCHED_BINARY_SIZE = 30791208
 MEMBER = "usr/local/bin/box64"
 PACKAGED_ASSET_PATH = "box64/box64-0.4.4.tzst"
 PAGE_SIZE = 65536
@@ -133,6 +139,9 @@ def unpack_archive(asset: Path, directory: Path, zstd: str) -> tuple[Path, bytes
 
 
 def validate_target(data: bytes, binary: Path, readelf: str, original: dict) -> tuple[dict, str]:
+    require(sha256(data) == PATCHED_BINARY_SHA256 and len(data) == PATCHED_BINARY_SIZE,
+            "Prepared Box64 differs from the Honor X8 validated binary; "
+            f"expected SHA-256 {PATCHED_BINARY_SHA256}")
     details = elf_details(data)
     require(details["interpreter"] == ROOTFS + "/lib/ld-linux-aarch64.so.1", "Incorrect relocated PT_INTERP")
     for key in ("type", "machine", "entry", "flags", "executable_sections", "tls"):
@@ -149,6 +158,10 @@ def validate_existing(asset: Path, report_path: Path, zstd: str, readelf: str) -
     except (OSError, ValueError) as error:
         raise PreparationError(f"Prepared-asset report unavailable: {report_path}") from error
     require(report.get("schema") == 1 and report.get("rootfs") == ROOTFS, "Unexpected relocation report")
+    require(report.get("patchelf") == PATCHELF_VERSION,
+            f"Prepared asset must use {PATCHELF_VERSION}; restore the tracked source asset and prepare again")
+    require(report["target"]["binary_sha256"] == PATCHED_BINARY_SHA256,
+            "Prepared-asset report does not identify the Honor X8 validated Box64")
     require(report["source"]["archive_sha256"] == ARCHIVE_SHA256 and report["source"]["binary_sha256"] == BINARY_SHA256,
             "Report does not refer to the pinned original Box64")
     require(sha256(asset.read_bytes()) == report["target"]["archive_sha256"], "Prepared archive SHA-256 differs from its report")
@@ -168,6 +181,10 @@ def prepare(asset: Path, output: Path, report_path: Path, patchelf: str, zstd: s
     require(asset.is_file(), f"Missing Box64 asset: {asset}")
     if check:
         return validate_existing(output, report_path, zstd, readelf)
+    actual_version = run([patchelf, "--version"]).strip()
+    require(actual_version == PATCHELF_VERSION,
+            f"Require {PATCHELF_VERSION}, found {actual_version!r}; "
+            "install tools/patchelf-build-requirements.txt instead of distro patchelf")
     input_sha = sha256(asset.read_bytes())
     if input_sha != ARCHIVE_SHA256:
         require(asset.resolve() == output.resolve(), "Unexpected source archive SHA-256; use the tracked original asset")
@@ -206,7 +223,7 @@ def prepare(asset: Path, output: Path, report_path: Path, patchelf: str, zstd: s
         target_asset = directory / "prepared.tzst"
         run([zstd, "--quiet", "-19", "--threads=1", "--force", str(target_tar), "-o", str(target_asset)])
         report = {"schema": 1, "rootfs": ROOTFS, "member": MEMBER,
-                  "patchelf": run([patchelf, "--version"]).strip(),
+                  "patchelf": actual_version,
                   "source": {"archive_sha256": input_sha, "binary_sha256": BINARY_SHA256, "elf": original},
                   "target": {"archive_sha256": sha256(target_asset.read_bytes()), "binary_sha256": sha256(patched),
                              "binary_size": len(patched), "elf": target}}

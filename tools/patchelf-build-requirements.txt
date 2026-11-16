@@ -1,0 +1,5 @@
+# Linux x86_64 build host, not a dependency installed in the Android APK.
+# Official release metadata: https://pypi.org/pypi/patchelf/0.19.3.0/json
+# This is the wheel used to produce the Box64 binary tested on the Honor X8.
+patchelf @ https://files.pythonhosted.org/packages/b3/d8/b261671a4064a145ae8129c5585ac79d121d852055043d03b66ee0aa4653/patchelf-0.19.3.0-py3-none-manylinux1_x86_64.manylinux_2_5_x86_64.musllinux_1_1_x86_64.whl \
+    --hash=sha256:1668a30fcc414debbb1604cd0a361b2f28a33a0ff6e74a74bc71766ee746e21f

@@ -43,12 +43,14 @@ only PT_INTERP/RUNPATH while checking code sections, TLS, dependencies and
 64 KiB PT_LOAD alignment. It generates `box64/tsoa-relocation.json` in assets
 for the runtime installer's integrity/path checks.
 
-For a manual Linux build, install Python 3.9+, `patchelf`, `zstd`, `binutils`
+For a manual Linux build, install Python 3.9+, pip, `zstd`, `binutils`
 and the existing Android SDK/NDK/JDK requirements, then run:
 
 ```sh
-python3 -m unittest discover -s tools/tests -p 'test_prepare_tsoa_box64.py' -v
-python3 tools/prepare_tsoa_box64.py
+python3 -m pip install --no-deps --require-hashes --target build/tsoa-patchelf -r tools/patchelf-build-requirements.txt
+TSOA_PATCHELF="$PWD/build/tsoa-patchelf/bin/patchelf"
+TSOA_TEST_PATCHELF="$TSOA_PATCHELF" python3 -m unittest discover -s tools/tests -p 'test_prepare_tsoa_box64.py' -v
+python3 tools/prepare_tsoa_box64.py --patchelf "$TSOA_PATCHELF"
 python3 tools/prepare_tsoa_box64.py --check
 ./gradlew --no-daemon :app:assembleDebug
 ```
@@ -56,6 +58,12 @@ python3 tools/prepare_tsoa_box64.py --check
 Run the packaging tests before preparation: they intentionally verify the
 tracked original archive. Preparation itself supports repeated execution.
 The generated metadata and reports under `build/` are not source files.
+
+Use the pinned patchelf 0.19.3 tool, not the distribution's 0.18. The first
+CI build produced a different binary with 0.18 that segfaulted even at
+`box64 --version` on the Honor X8. Preparation now requires the exact
+device-tested output SHA256 `7753d56fda104ada63740626306735d4a9ed099aee2b999e2d214c3af9e9e207`
+and size30791208, in addition to structural ELF validation.
 
 The interpreter is prepared for the tested application ID and Android user 0:
 `/data/user/0/com.naninovel.mobile/files/rootfs`. Changing the package/user

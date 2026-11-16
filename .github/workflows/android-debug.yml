@@ -35,9 +35,16 @@ jobs:
       - name: Prepare dedicated Box64 ELF
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends patchelf zstd binutils
-          python3 -m unittest discover -s tools/tests -p 'test_prepare_tsoa_box64.py' -v
-          python3 tools/prepare_tsoa_box64.py
+          sudo apt-get install -y --no-install-recommends zstd binutils
+          python3 -m pip install --disable-pip-version-check --no-deps \
+            --only-binary=:all: --require-hashes \
+            --target "${RUNNER_TEMP}/tsoa-patchelf" \
+            -r tools/patchelf-build-requirements.txt
+          TSOA_PATCHELF="${RUNNER_TEMP}/tsoa-patchelf/bin/patchelf"
+          "${TSOA_PATCHELF}" --version
+          TSOA_TEST_PATCHELF="${TSOA_PATCHELF}" \
+            python3 -m unittest discover -s tools/tests -p 'test_prepare_tsoa_box64.py' -v
+          python3 tools/prepare_tsoa_box64.py --patchelf "${TSOA_PATCHELF}"
           python3 tools/prepare_tsoa_box64.py --check
 
       - name: Validate TSOA runtime helpers
