@@ -596,6 +596,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
         environment.startEnvironmentComponents();
 
+        // A failed runtime preparation already requested exit; do not reopen its receiver.
+        if (guestProgramLauncherComponent.hasStartupFailed()) return;
         winHandler.start();
         envVars.clear();
         graphicsDriver = null;

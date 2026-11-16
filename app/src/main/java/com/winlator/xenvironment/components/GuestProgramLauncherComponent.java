@@ -15,14 +15,17 @@ import com.winlator.core.FileUtils;
 import com.winlator.core.GeneralComponents;
 import com.winlator.core.LocaleHelper;
 import com.winlator.core.ProcessHelper;
+import com.winlator.core.TsoaBox64Runtime;
 import com.winlator.core.TsoaRedirectorV2;
 import com.winlator.core.TsoaRedirectorV2Log;
+import com.winlator.core.TsoaRuntimeConfig;
 import com.winlator.widget.LogView;
 import com.winlator.xconnector.UnixSocketConfig;
 import com.winlator.xenvironment.EnvironmentComponent;
 import com.winlator.xenvironment.RootFS;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.List;
 
 public class GuestProgramLauncherComponent extends EnvironmentComponent {
@@ -31,15 +34,26 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
     private EnvVars envVars;
     private String box64Preset = Box64Preset.CONSERVATIVE;
     private Callback<Integer> terminationCallback;
+    private volatile boolean startupFailed;
     private static final Object lock = new Object();
 
     @Override
     public void start() {
         synchronized (lock) {
             stop();
-            extractBox64File();
-            copyDefaultBox64RCFile();
-            pid = execGuestProgram();
+            startupFailed = false;
+            try {
+                extractBox64File();
+                copyDefaultBox64RCFile();
+                pid = execGuestProgram();
+            }
+            catch (IOException e) {
+                startupFailed = true;
+                Context context = environment.getContext();
+                android.util.Log.e("TSOA_FE_DIAG", "Unable to prepare TSOA runtime", e);
+                TsoaRedirectorV2Log.append(context, "TSOA runtime setup failed: " + e.getMessage());
+                if (terminationCallback != null) terminationCallback.call(1);
+            }
         }
     }
 
@@ -55,6 +69,10 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
 
     public Callback<Integer> getTerminationCallback() {
         return terminationCallback;
+    }
+
+    public boolean hasStartupFailed() {
+        return startupFailed;
     }
 
     public void setTerminationCallback(Callback<Integer> terminationCallback) {
@@ -85,7 +103,7 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         this.box64Preset = box64Preset;
     }
 
-    private int execGuestProgram() {
+    private int execGuestProgram() throws IOException {
         Context context = environment.getContext();
         RootFS rootFS = environment.getRootFS();
         File rootDir = rootFS.getRootDir();
@@ -110,6 +128,10 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         envVars.remove("TSOA_REDIRECTOR_V2");
 
         if (tsoaRedirectorRequested) {
+            TsoaRuntimeConfig.apply(context, rootFS, envVars);
+            TsoaRedirectorV2Log.append(context, "Runtime configured: DISPLAY=" + envVars.get("DISPLAY")
+                    + " VK_DRIVER_FILES=" + envVars.get("VK_DRIVER_FILES")
+                    + " WINEESYNC=" + envVars.get("WINEESYNC"));
             File redirectorLibrary = TsoaRedirectorV2.install(context);
             String wineDir = rootFS.getWinePath();
             String wineAbsolute = rootDir.getAbsolutePath() + wineDir;
@@ -133,7 +155,8 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
                 }
 
                 envVars.put("BOX64_LD_PRELOAD", preload.toString());
-                envVars.put("BOX64_FORCE_LD_PRELOAD", "1");
+                // RTLD_NEXT must skip the interposer when resolving the original libc function.
+                envVars.put("BOX64_FORCE_LD_PRELOAD", "0");
                 envVars.put("TSOA_ROOTFS", rootDir.getAbsolutePath());
                 envVars.put("TSOA_WINE_DIR", wineDir);
 
@@ -141,8 +164,7 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
                         "Preload configured: " + redirectorPath);
             }
             else {
-                android.util.Log.e("TSOA_REDIRECT_V2",
-                        "Installation or Wine directories invalid; preload disabled.");
+                throw new IOException("Redirector installation or Wine directories are invalid.");
             }
         }
 
@@ -178,11 +200,21 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         }, outputCallback);
     }
 
-    private void extractBox64File() {
+    private void extractBox64File() throws IOException {
         Context context = environment.getContext();
         SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);
         String box64Version = preferences.getString("box64_version", DefaultVersion.BOX64);
         String currentBox64Version = preferences.getString("current_box64_version", "");
+
+        boolean tsoaRuntime = this.envVars != null &&
+                "1".equals(this.envVars.get("TSOA_REDIRECTOR_V2"));
+        if (tsoaRuntime && DefaultVersion.BOX64.equals(box64Version)) {
+            // Validate the installed binary as well as the version: older APKs installed
+            // the same Box64 version with an interpreter pointing at com.winlator.
+            TsoaBox64Runtime.install(context, environment.getRootFS());
+            preferences.edit().putString("current_box64_version", box64Version).apply();
+            return;
+        }
 
         if (!box64Version.equals(currentBox64Version)) {
             GeneralComponents.extractFile(GeneralComponents.Type.BOX64, context, box64Version, DefaultVersion.BOX64);

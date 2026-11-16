@@ -32,6 +32,22 @@ jobs:
             "ndk;24.0.8215888" \
             "cmake;3.22.1"
 
+      - name: Prepare dedicated Box64 ELF
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends patchelf zstd binutils
+          python3 -m unittest discover -s tools/tests -p 'test_prepare_tsoa_box64.py' -v
+          python3 tools/prepare_tsoa_box64.py
+          python3 tools/prepare_tsoa_box64.py --check
+
+      - name: Validate TSOA runtime helpers
+        run: |
+          curl --fail --location --retry 3 \
+            https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar \
+            --output "${RUNNER_TEMP}/tsoa-json.jar"
+          python3 tools/tests/test_tsoa_runtime_config.py --json-jar "${RUNNER_TEMP}/tsoa-json.jar"
+          python3 tools/tests/test_tsoa_box64_runtime.py --json-jar "${RUNNER_TEMP}/tsoa-json.jar"
+
       - name: Build debug APK
         run: |
           chmod +x ./gradlew
