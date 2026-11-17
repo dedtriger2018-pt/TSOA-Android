@@ -55,7 +55,7 @@ import com.winlator.container.GraphicsDrivers;
 import com.winlator.XServerDisplayActivity;
 import com.winlator.core.PreloaderDialog;
 import com.winlator.xenvironment.RootFSInstaller;
-import com.winlator.tsoa.EcoBackdropView;
+import com.winlator.tsoa.lab3d.Lab3dBackdropView;
 import com.winlator.tsoa.TsoaOptions;
 import com.winlator.tsoa.TsoaMenuLanguage;
 import com.winlator.tsoa.TsoaMenuErrors;
@@ -110,7 +110,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     private FrameLayout launcherRoot;
     private LinearLayout launcherHeader;
     private LinearLayout launcherMenu;
-    private EcoBackdropView ecoBackdrop;
+    private Lab3dBackdropView ecoBackdrop;
     private TsoaMaintenance maintenance;
     private TsoaAmbience ambience;
     private final int[] backdropScreenPosition = new int[2];
@@ -211,7 +211,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         menuContext = TsoaMenuLanguage.context(this, currentMenuLanguage);
         launcherRoot = new FrameLayout(this);
         launcherRoot.setBackgroundColor(Color.rgb(9, 18, 22));
-        ecoBackdrop = new EcoBackdropView(this);
+        ecoBackdrop = new Lab3dBackdropView(this);
         ecoBackdrop.setMenuLabels(menuString(R.string.tsoa_settings), menuString(R.string.tsoa_about));
         ambience = new TsoaAmbience(this);
         launcherRoot.addView(ecoBackdrop, new FrameLayout.LayoutParams(-1, -1));
@@ -732,6 +732,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     protected void onDestroy() {
         if (launcherRoot != null) launcherRoot.removeCallbacks(autoLaunch);
         setLobbyActive(false);
+        if (ecoBackdrop != null) ecoBackdrop.close();
         if (ambience != null) ambience.close();
         if (maintenance != null) maintenance.close();
         importExecutor.shutdown();
