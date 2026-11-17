@@ -177,6 +177,8 @@ public final class TsoaOptionsDialog {
         note(s(R.string.tsoa_game_sharpening_detail));
         toggle(s(R.string.tsoa_fsr), s(R.string.tsoa_fsr_detail),
                 "game_fsr_enabled", options.isGameFsrEnabled());
+        toggle(s(R.string.tsoa_frame_generation), s(R.string.tsoa_frame_generation_detail),
+                "game_frame_generation_enabled", options.isGameFrameGenerationEnabled());
         note(s(R.string.tsoa_game_filters_detail));
         note(s(R.string.tsoa_resolution_detail));
     }

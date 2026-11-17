@@ -28,6 +28,9 @@ public class EffectComposer {
     private SoftBloom softBloom;
     private boolean bloomReleaseRequested;
 
+    private long visualRevision;
+    public synchronized long getVisualRevision() { return visualRevision; }
+
     private boolean gameFxaa, gameFsr;
     private int gameSharpness;
     private SpatialUpscaler upscaler;
@@ -41,6 +44,7 @@ public class EffectComposer {
 
     /** Preferences are applied independently of HDR/manual color controls. */
     public synchronized void configureSpatialFilters(boolean fxaa, boolean fsr, int sharpness) {
+        visualRevision++;
         gameFxaa = fxaa;
         gameFsr = fsr;
         gameSharpness = Math.max(0, Math.min(100, sharpness));
@@ -70,11 +74,13 @@ public class EffectComposer {
 
     public synchronized void addEffect(Effect effect) {
         if (!effects.contains(effect)) effects.add(effect);
+        visualRevision++;
         renderer.xServerView.requestRender();
     }
 
     public synchronized void removeEffect(Effect effect) {
         effects.remove(effect);
+        visualRevision++;
         releaseBloomResources();
         renderer.xServerView.requestRender();
     }
@@ -215,7 +221,10 @@ public class EffectComposer {
         }
     }
 
-    public synchronized void render() {
+    public synchronized void render() { renderToFramebuffer(0); }
+
+    /** Render the processed scene into a separate real-frame history target. */
+    public synchronized void renderToFramebuffer(int outputFramebuffer) {
         initBuffers();
         boolean fsrActive = false;
         int outWidth = renderer.isFullscreen() ? renderer.surfaceWidth : renderer.viewTransformation.viewWidth;
@@ -262,12 +271,13 @@ public class EffectComposer {
         // FSR requested at native resolution: preserve normal output, with no false upscale.
         if (frameEffects.isEmpty()) {
             if (copyMaterial == null) copyMaterial = new ScreenMaterial();
-            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, outputFramebuffer);
             GLES20.glViewport(0, 0, renderer.surfaceWidth, renderer.surfaceHeight);
+            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
             drawCopy();
         }
         for (int i = 0; i < frameEffects.size(); i++) {
-            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, i + 1 < frameEffects.size() ? writeBuffer.getFramebuffer() : 0);
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, i + 1 < frameEffects.size() ? writeBuffer.getFramebuffer() : outputFramebuffer);
             GLES20.glViewport(0, 0, renderer.surfaceWidth, renderer.surfaceHeight);
             renderer.viewportNeedsUpdate = true;
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);

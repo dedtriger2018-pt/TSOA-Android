@@ -28,6 +28,8 @@ public final class TsoaSpatialOptionsCheck {
         require(!options.isGameFsrEnabled(), "FSR must default Off");
         require(options.getGameSharpeningStrength() == 0, "Sharpening must default Off");
         require(!options.isGameBloomEnabled(), "Bloom must remain optional");
+        require(!options.isGameFrameGenerationEnabled(), "Frame generation must default Off");
+        context.values.put("game_frame_generation_enabled", true);
         context.values.put("menu_language", "zh-CN");
         context.values.put("wine_locale", "en_US.UTF-8");
         context.values.put("game_hdr_mode", 2);
@@ -44,6 +46,7 @@ public final class TsoaSpatialOptionsCheck {
                     require(recreated.isGameFsrEnabled() == fsr, "Saved FSR lost");
                     require(recreated.getGameSharpeningStrength() == Math.max(0, Math.min(100, strength)), "Sharpness bounds");
                     require(recreated.isGameBloomEnabled() && recreated.getGameHdrMode() == 2, "Filters changed HDR/Bloom");
+                    require(recreated.isGameFrameGenerationEnabled(), "Saved frame generation lost or overwritten");
                     require(recreated.getMenuLanguage().equals("zh-CN"), "Filter getters changed menu language");
                     require(context.values.equals(snapshot), "Filter getters mutated preferences");
                 }
@@ -115,6 +118,12 @@ public final class SpatialLifecycleCheck {
         for(int i=0;i<GLES20.draws.size();i++)require(!cas(i),"FSR stacked CAS and RCAS");
         ColorEffect color=renderer.effectComposer.getEffect(ColorEffect.class);
         require(color!=null&&color.isBloomEnabled()&&color.getHdrStrength()==1.0f,"Spatial effects changed HDR/Bloom preference");
+
+        // Real processed scenes must reach the separate temporal history target.
+        GLES20.draws.clear();
+        renderer.effectComposer.renderToFramebuffer(9876);
+        require(GLES20.draws.get(GLES20.draws.size()-1)[2]==9876,
+                "Final HDR/Bloom/spatial composite escaped the requested frame-history target");
 
         // Native-resolution FSR alone must bypass allocation and capture entirely.
         GLRenderer nativeRenderer=new GLRenderer();

@@ -178,8 +178,8 @@
     <string name="tsoa_settings">Settings</string>
     <string name="tsoa_simulated_hdr">Simulated HDR</string>
     <string name="tsoa_soft">Soft</string>
-    <string name="tsoa_soft_bloom">Soft bloom</string>
-    <string name="tsoa_soft_bloom_detail">A soft glow around lights, only in the game. Optional: may increase GPU use. Applies when opening or returning to the game.</string>
+    <string name="tsoa_soft_bloom">Bloom</string>
+    <string name="tsoa_soft_bloom_detail">Selective incandescent glow around lights, only in the game. May increase GPU use. Applies when opening or returning to the game.</string>
     <string name="tsoa_starting_game">STARTING TSOA</string>
     <string name="tsoa_strong">Strong</string>
     <string name="tsoa_unlimited">Unlimited</string>
@@ -196,5 +196,7 @@
     <string name="tsoa_game_sharpening_detail">At zero, extra sharpening is off; FSR keeps a soft RCAS setting. Increase gradually; high values may create outlines around details.</string>
     <string name="tsoa_fsr">FSR 1.0 (EASU + RCAS)</string>
     <string name="tsoa_fsr_detail">Upscales a lower game resolution to the displayed area. Choose a lower resolution above. Includes RCAS; the sharpening control adjusts it without adding CAS.</string>
+    <string name="tsoa_frame_generation">Frame generation 2× (experimental)</string>
+    <string name="tsoa_frame_generation_detail">Adapts intermediate frames to the game FPS and display refresh rate. Uses more GPU and may increase latency or leave trails. If it fails, the game continues without generation for this session.</string>
     <string name="tsoa_game_filters_detail">Filters affect only the game and apply when opening or returning to it. Combining effects increases GPU use; disable some if performance drops.</string>
 </resources>

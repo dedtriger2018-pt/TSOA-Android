@@ -215,7 +215,7 @@ public class TsoaGameColorCheck {
         ScreenMaterial bloomMaterial = bloom.getMaterial();
         bloom.setBloomTextureAvailable(true);
         bloomMaterial.use();
-        uniform(bloomMaterial, "bloomStrength", 0.16f);
+        uniform(bloomMaterial, "bloomStrength", 0.48f);
         uniform(bloomMaterial, "bloomTexture", 1.0f);
         bloom.setBloomTextureAvailable(false);
         bloomMaterial.use();

@@ -178,8 +178,8 @@
     <string name="tsoa_settings">Configurações</string>
     <string name="tsoa_simulated_hdr">HDR simulado</string>
     <string name="tsoa_soft">Suave</string>
-    <string name="tsoa_soft_bloom">Bloom suave</string>
-    <string name="tsoa_soft_bloom_detail">Brilho suave nas luzes, somente no jogo. Opcional: pode aumentar o uso da GPU. Vale ao abrir ou voltar à partida.</string>
+    <string name="tsoa_soft_bloom">Bloom</string>
+    <string name="tsoa_soft_bloom_detail">Brilho incandescente e seletivo ao redor das luzes, somente no jogo. Pode aumentar o uso da GPU. Vale ao abrir ou voltar à partida.</string>
     <string name="tsoa_starting_game">INICIANDO TSOA</string>
     <string name="tsoa_strong">Forte</string>
     <string name="tsoa_unlimited">Sem limite</string>
@@ -196,5 +196,7 @@
     <string name="tsoa_game_sharpening_detail">Em zero, a nitidez extra fica desligada; com FSR, mantém RCAS suave. Aumente aos poucos; valores altos podem criar contornos nos detalhes.</string>
     <string name="tsoa_fsr">FSR 1.0 (EASU + RCAS)</string>
     <string name="tsoa_fsr_detail">Amplia uma resolução do jogo menor para a área exibida. Escolha uma resolução menor acima. Inclui RCAS; o controle de nitidez ajusta esse efeito, sem somar CAS.</string>
+    <string name="tsoa_frame_generation">Geração de quadros 2× (experimental)</string>
+    <string name="tsoa_frame_generation_detail">Adapta os quadros intermediários ao FPS do jogo e à atualização da tela. Usa mais GPU e pode aumentar a latência e gerar rastros. Em caso de falha, o jogo continua sem geração nesta sessão.</string>
     <string name="tsoa_game_filters_detail">Os filtros afetam somente o jogo e valem ao abrir ou voltar à partida. Combinar efeitos aumenta o uso da GPU; desative alguns se perder fluidez.</string>
 </resources>

@@ -33,20 +33,29 @@ public final class SoftBloom {
             "uniform vec2 sourceStep;",
             "in vec2 vUV;",
             "layout(location = 0) out vec4 outFragColor;",
-            "vec3 bright(vec3 color) {",
+            "float peakOf(vec3 color) { return max(color.r, max(color.g, color.b)); }",
+            "vec3 bright(vec3 color, float surroundPeak) {",
                 "float peak = max(color.r, max(color.g, color.b));",
                 "float knee = clamp(peak - 0.80 + 0.10, 0.0, 0.20);",
                 "knee = knee * knee / 0.40001;",
                 "float amount = max(peak - 0.80, knee);",
-                // Normalize the highlight range so white reaches 1 before the soft .16 blend.
-                "return color * (min(amount * 5.0, 1.0) / max(peak, 0.00001));",
+                // Concentrated lights and near-white highlights glow strongly. Flat
+                // near-threshold surfaces retain approximately the old gentle lift.
+                "float localContrast = max(peak - surroundPeak, 0.0);",
+                "float selective = 0.35 + 0.65 * max(smoothstep(0.90, 0.99, peak), smoothstep(0.02, 0.24, localContrast));",
+                "return color * (min(amount * 5.0, 1.0) * selective / max(peak, 0.00001));",
             "}",
             "void main() {",
+                "float surroundPeak = peakOf(texture(screenTexture, vUV + sourceStep * vec2(-4.0, 0.0)).rgb);",
+                "surroundPeak += peakOf(texture(screenTexture, vUV + sourceStep * vec2(4.0, 0.0)).rgb);",
+                "surroundPeak += peakOf(texture(screenTexture, vUV + sourceStep * vec2(0.0, -4.0)).rgb);",
+                "surroundPeak += peakOf(texture(screenTexture, vUV + sourceStep * vec2(0.0, 4.0)).rgb);",
+                "surroundPeak *= 0.25;",
                 // Four bilinear samples cover the source's 4x4 footprint.
-                "vec3 color = bright(texture(screenTexture, vUV + sourceStep * vec2(-1.0, -1.0)).rgb);",
-                "color += bright(texture(screenTexture, vUV + sourceStep * vec2(1.0, -1.0)).rgb);",
-                "color += bright(texture(screenTexture, vUV + sourceStep * vec2(-1.0, 1.0)).rgb);",
-                "color += bright(texture(screenTexture, vUV + sourceStep * vec2(1.0, 1.0)).rgb);",
+                "vec3 color = bright(texture(screenTexture, vUV + sourceStep * vec2(-1.0, -1.0)).rgb, surroundPeak);",
+                "color += bright(texture(screenTexture, vUV + sourceStep * vec2(1.0, -1.0)).rgb, surroundPeak);",
+                "color += bright(texture(screenTexture, vUV + sourceStep * vec2(-1.0, 1.0)).rgb, surroundPeak);",
+                "color += bright(texture(screenTexture, vUV + sourceStep * vec2(1.0, 1.0)).rgb, surroundPeak);",
                 "outFragColor = vec4(color * 0.25, 1.0);",
             "}");
     }
@@ -59,11 +68,18 @@ public final class SoftBloom {
             "in vec2 vUV;",
             "layout(location = 0) out vec4 outFragColor;",
             "void main() {",
-                "vec3 color = texture(screenTexture, vUV - 2.0 * sampleOffset).rgb * 0.06136;",
-                "color += texture(screenTexture, vUV - sampleOffset).rgb * 0.24477;",
-                "color += texture(screenTexture, vUV).rgb * 0.38774;",
-                "color += texture(screenTexture, vUV + sampleOffset).rgb * 0.24477;",
-                "color += texture(screenTexture, vUV + 2.0 * sampleOffset).rgb * 0.06136;",
+                // Normalized nine-tap Gaussian, sigma 2, spaced 1.5 quarter
+                // texels apart for a soft 24-source-pixel halo.
+                "vec2 blurStep = sampleOffset * 1.5;",
+                "vec3 color = texture(screenTexture, vUV - 4.0 * blurStep).rgb * 0.02763055;",
+                "color += texture(screenTexture, vUV - 3.0 * blurStep).rgb * 0.06628225;",
+                "color += texture(screenTexture, vUV - 2.0 * blurStep).rgb * 0.12383154;",
+                "color += texture(screenTexture, vUV - blurStep).rgb * 0.18017382;",
+                "color += texture(screenTexture, vUV).rgb * 0.20416368;",
+                "color += texture(screenTexture, vUV + blurStep).rgb * 0.18017382;",
+                "color += texture(screenTexture, vUV + 2.0 * blurStep).rgb * 0.12383154;",
+                "color += texture(screenTexture, vUV + 3.0 * blurStep).rgb * 0.06628225;",
+                "color += texture(screenTexture, vUV + 4.0 * blurStep).rgb * 0.02763055;",
                 "outFragColor = vec4(color, 1.0);",
             "}");
     }

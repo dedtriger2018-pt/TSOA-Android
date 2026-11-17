@@ -35,7 +35,7 @@ public class ColorEffect extends Effect {
                 setUniformFloat(gammaUniform, gamma);
                 setUniformFloat(hdrStrengthUniform, hdrStrength);
                 setUniformInt(bloomTextureUniform, 1);
-                setUniformFloat(bloomStrengthUniform, bloomEnabled && bloomTextureAvailable ? 0.16f : 0.0f);
+                setUniformFloat(bloomStrengthUniform, bloomEnabled && bloomTextureAvailable ? 0.48f : 0.0f);
             }
         };
     }

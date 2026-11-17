@@ -46,6 +46,9 @@ public final class TsoaOptions {
 
     public boolean isGameFsrEnabled() { return preferences.getBoolean("game_fsr_enabled", false); }
 
+    /** Experimental game-only intermediate frames; opt in after checking device stability. */
+    public boolean isGameFrameGenerationEnabled() { return preferences.getBoolean("game_frame_generation_enabled", false); }
+
     public int getFpsLimit() {
         int value = preferences.getInt("fps_limit", 0);
         return value == 30 || value == 60 ? value : 0;

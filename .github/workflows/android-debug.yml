@@ -71,6 +71,13 @@ jobs:
           python3 tools/tests/test_tsoa_menu_language.py
           python3 tools/tests/test_tsoa_spatial_filters.py
 
+      - name: Validate experimental native frame generation
+        run: |
+          python3 tools/tests/test_tsoa_frame_clock.py
+          python3 tools/tests/test_tsoa_frame_interpolation.py
+          python3 tools/tests/test_tsoa_frame_presenter.py
+          python3 tools/tests/test_tsoa_frame_pacing.py
+
       - name: Build debug APK
         run: |
           chmod +x ./gradlew

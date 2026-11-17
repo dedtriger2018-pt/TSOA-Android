@@ -6,6 +6,8 @@ import android.graphics.BitmapFactory;
 import android.opengl.EGL14;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
+import android.util.Log;
+import com.winlator.core.TsoaRedirectorV2Log;
 
 import androidx.core.graphics.ColorUtils;
 
@@ -63,6 +65,78 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     protected short surfaceWidth;
     protected short surfaceHeight;
     public final EffectComposer effectComposer = new EffectComposer(this);
+    private volatile boolean frameGenerationEnabled;
+    private volatile boolean frameGenerationResetRequested;
+    private volatile long frameGenerationDisplayPeriod = 16_666_667L;
+    private volatile long frameGenerationVsync;
+    private volatile FrameGenerationPresenter framePresenter;
+    private boolean omitCursorFromScene;
+    private long contentSerial = 1, contentTime = System.nanoTime();
+    private final long[] contentSnapshot = new long[2];
+
+    public void setFrameGenerationEnabled(boolean enabled) {
+        frameGenerationEnabled = enabled;
+        resetFrameGenerationHistory();
+    }
+
+    public void setFrameGenerationDisplayPeriod(long periodNanos) {
+        frameGenerationDisplayPeriod = Math.max(4_000_000L, Math.min(100_000_000L, periodNanos));
+    }
+
+    public void onFrameGenerationVsync(long timestampNanos) { frameGenerationVsync = timestampNanos; }
+    public boolean needsFrameGenerationVsync(long nowNanos) {
+        FrameGenerationPresenter presenter = framePresenter;
+        return frameGenerationEnabled && presenter != null && presenter.needsVsync(nowNanos);
+    }
+
+    public void resetFrameGenerationHistory() {
+        frameGenerationResetRequested = true;
+        xServerView.queueEvent(this::releaseFrameGenerationHistory);
+    }
+
+    private void releaseFrameGenerationHistory() {
+        if (!frameGenerationResetRequested || EGL14.eglGetCurrentContext().equals(EGL14.EGL_NO_CONTEXT)) return;
+        if (framePresenter != null) { framePresenter.release(); framePresenter = null; }
+        frameGenerationResetRequested = false;
+    }
+
+    private synchronized void noteSourceContent() {
+        contentTime = System.nanoTime();
+        contentSerial++;
+    }
+
+    private synchronized void snapshotSourceContent() {
+        contentSnapshot[0] = contentSerial;
+        contentSnapshot[1] = contentTime;
+    }
+
+    void logFrameGeneration(String detail) {
+        final String message = "Frame generation: " + detail;
+        Log.i("TSOA_FE_DIAG", message);
+        xServerView.post(() -> TsoaRedirectorV2Log.append(xServerView.getContext(), message));
+    }
+
+    void drawProcessedSceneTo(int framebuffer) {
+        omitCursorFromScene = true;
+        try {
+            if (effectComposer.hasEffects()) effectComposer.renderToFramebuffer(framebuffer);
+            else {
+                GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, framebuffer);
+                viewportNeedsUpdate = true;
+                drawFrame();
+            }
+        } finally { omitCursorFromScene = false; }
+    }
+
+    void drawFrameGenerationCursor() {
+        if (!cursorVisible) return;
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+        if (fullscreen) GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight);
+        else GLES20.glViewport(viewTransformation.viewOffsetX, viewTransformation.viewOffsetY,
+                viewTransformation.viewWidth, viewTransformation.viewHeight);
+        renderCursor();
+        viewportNeedsUpdate = true;
+    }
 
     public GLRenderer(XServerView xServerView, XServer xServer) {
         this.xServerView = xServerView;
@@ -103,6 +177,8 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         surfaceHeight = (short)height;
         viewTransformation.update(width, height, xServer.screenInfo.width, xServer.screenInfo.height);
         viewportNeedsUpdate = true;
+        resetFrameGenerationHistory();
+        noteSourceContent();
     }
 
     @Override
@@ -111,12 +187,41 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             fullscreen = !fullscreen;
             toggleFullscreen = false;
             viewportNeedsUpdate = true;
+            resetFrameGenerationHistory();
+            noteSourceContent();
+        }
+        releaseFrameGenerationHistory();
+        if (frameGenerationEnabled && magnifierZoom == 1.0f && !screenOffsetYRelativeToCursor) {
+            try {
+                if (framePresenter == null) framePresenter = new FrameGenerationPresenter();
+                snapshotSourceContent();
+                long now = frameGenerationVsync > 0 ? frameGenerationVsync : System.nanoTime();
+                if (framePresenter.render(this, now, contentSnapshot[0], contentSnapshot[1], frameGenerationDisplayPeriod)) {
+                    if (framePresenter.needsVsync(now)) xServerView.requestRender();
+                    return;
+                }
+                if (framePresenter.hasFailed()) bypassFrameGeneration(framePresenter.getFailureReason());
+            } catch (RuntimeException exception) {
+                bypassFrameGeneration(exception.getClass().getSimpleName() + ": " + exception.getMessage());
+            }
+            // Failed/unsupported paths preserve the normal game rendering state.
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+            GLES20.glEnable(GLES20.GL_BLEND);
+            viewportNeedsUpdate = true;
         }
 
         if (effectComposer.hasEffects()) {
             effectComposer.render();
         }
         else drawFrame();
+    }
+
+    private void bypassFrameGeneration(String reason) {
+        logFrameGeneration("bypassed for this session: " + reason);
+        frameGenerationEnabled = false;
+        frameGenerationResetRequested = true;
+        xServerView.post(() -> xServerView.setFrameGenerationEnabled(false));
     }
 
     int getGameWidth() { return xServer.screenInfo.width; }
@@ -158,34 +263,44 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         XForm.makeTransform(tmpXForm2, -pointerX, -pointerY, magnifierZoom, magnifierZoom, 0);
 
         renderWindows();
-        if (cursorVisible) renderCursor();
+        if (cursorVisible && !omitCursorFromScene) renderCursor();
     }
 
     @Override
     public void onMapWindow(Window window) {
+        if (frameGenerationEnabled) resetFrameGenerationHistory();
+        noteSourceContent();
         xServerView.queueEvent(this::updateScene);
         xServerView.requestRender();
     }
 
     @Override
     public void onUnmapWindow(Window window) {
+        if (frameGenerationEnabled) resetFrameGenerationHistory();
+        noteSourceContent();
         xServerView.queueEvent(this::updateScene);
         xServerView.requestRender();
     }
 
     @Override
     public void onChangeWindowZOrder(Window window) {
+        if (frameGenerationEnabled) resetFrameGenerationHistory();
+        noteSourceContent();
         xServerView.queueEvent(this::updateScene);
         xServerView.requestRender();
     }
 
     @Override
     public void onUpdateWindowContent(Window window) {
+        // Damage identifies new source content. Pointer/extra display requests do not.
+        if (window.isRenderable()) noteSourceContent();
         xServerView.requestRender();
     }
 
     @Override
     public void onUpdateWindowGeometry(final Window window, boolean resized) {
+        if (frameGenerationEnabled) resetFrameGenerationHistory();
+        noteSourceContent();
         if (resized) {
             xServerView.queueEvent(this::updateScene);
         }
@@ -393,6 +508,8 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 
     public void setScreenOffsetYRelativeToCursor(boolean screenOffsetYRelativeToCursor) {
         this.screenOffsetYRelativeToCursor = screenOffsetYRelativeToCursor;
+        if (frameGenerationEnabled) resetFrameGenerationHistory();
+        noteSourceContent();
         xServerView.requestRender();
     }
 
@@ -414,6 +531,8 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 
     public void setMagnifierZoom(float magnifierZoom) {
         this.magnifierZoom = magnifierZoom;
+        if (frameGenerationEnabled) resetFrameGenerationHistory();
+        noteSourceContent();
         xServerView.requestRender();
     }
 

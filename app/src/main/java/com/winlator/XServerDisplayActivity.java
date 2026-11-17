@@ -634,6 +634,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     }
 
     private String appliedGameSpatialOptions;
+    private Boolean appliedGameFrameGeneration;
 
     private void applyDedicatedGameColorOptions(String source) {
         if (!dedicatedLauncherMode || tsoaOptions == null || xServerView == null) return;
@@ -664,6 +665,13 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         if (!spatialOptions.equals(appliedGameSpatialOptions)) {
             xServerView.getRenderer().effectComposer.configureSpatialFilters(fxaa, fsr, sharpness);
             appliedGameSpatialOptions = spatialOptions;
+        }
+        boolean frameGeneration = tsoaOptions.isGameFrameGenerationEnabled();
+        if (appliedGameFrameGeneration == null || frameGeneration != appliedGameFrameGeneration
+                || (frameGeneration && "resume".equals(source))) {
+            xServerView.setFrameGenerationEnabled(frameGeneration);
+            Log.i("TSOA_FE_DIAG", "Frame generation preference applied: enabled=" + frameGeneration);
+            appliedGameFrameGeneration = frameGeneration;
         }
     }
 

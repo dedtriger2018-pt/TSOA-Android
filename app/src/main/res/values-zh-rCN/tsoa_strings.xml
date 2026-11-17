@@ -178,8 +178,8 @@
     <string name="tsoa_settings">设置</string>
     <string name="tsoa_simulated_hdr">模拟 HDR</string>
     <string name="tsoa_soft">柔和</string>
-    <string name="tsoa_soft_bloom">柔和泛光</string>
-    <string name="tsoa_soft_bloom_detail">仅在游戏中为亮部添加柔和光晕。此可选效果可能增加 GPU 负载。在打开或返回游戏时生效。</string>
+    <string name="tsoa_soft_bloom">Bloom（泛光）</string>
+    <string name="tsoa_soft_bloom_detail">仅在游戏中为亮部添加更明显的柔和辉光，保留暗部。可能增加 GPU 负载。启动或返回游戏时生效。</string>
     <string name="tsoa_starting_game">正在启动 TSOA</string>
     <string name="tsoa_strong">强</string>
     <string name="tsoa_unlimited">不限制</string>
@@ -196,5 +196,7 @@
     <string name="tsoa_game_sharpening_detail">设为零时关闭额外锐化；开启 FSR 时保留柔和的 RCAS。请逐步增加，过高的数值可能在细节周围产生光边。</string>
     <string name="tsoa_fsr">FSR 1.0（EASU + RCAS）</string>
     <string name="tsoa_fsr_detail">将较低的游戏分辨率放大至显示区域。请在上方选择较低的游戏分辨率。已包含 RCAS；锐化滑块会调整 RCAS，不会叠加 CAS。</string>
+    <string name="tsoa_frame_generation">2× 帧生成（实验性）</string>
+    <string name="tsoa_frame_generation_detail">根据游戏帧率和屏幕刷新率调整中间帧。会增加 GPU 负载，并可能增加延迟或产生重影。如果发生故障，本次游戏将关闭帧生成并继续正常运行。</string>
     <string name="tsoa_game_filters_detail">滤镜仅影响游戏，在打开或返回游戏时生效。同时启用多个效果会增加 GPU 负载；若流畅度下降，请关闭部分效果。</string>
 </resources>
