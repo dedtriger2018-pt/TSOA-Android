@@ -57,6 +57,8 @@ import com.winlator.core.PreloaderDialog;
 import com.winlator.xenvironment.RootFSInstaller;
 import com.winlator.tsoa.EcoBackdropView;
 import com.winlator.tsoa.TsoaOptions;
+import com.winlator.tsoa.TsoaMenuLanguage;
+import com.winlator.tsoa.TsoaMenuErrors;
 import com.winlator.tsoa.TsoaAmbience;
 import com.winlator.tsoa.TsoaOptionsDialog;
 import com.winlator.tsoa.TsoaMaintenance;
@@ -97,6 +99,13 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     private TextView launcherDetail;
     private ProgressBar launcherProgress;
     private Button launcherAction;
+    private Button launcherOptions;
+    private Button launcherAbout;
+    private Context menuContext;
+    private String currentMenuLanguage;
+    private int launcherStatusResource;
+    private int launcherDetailResource;
+    private int launcherActionResource;
     private final java.util.concurrent.ExecutorService importExecutor = Executors.newSingleThreadExecutor();
     private FrameLayout launcherRoot;
     private LinearLayout launcherHeader;
@@ -173,20 +182,20 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         launcherPreferences = getSharedPreferences(LAUNCHER_PREFS, MODE_PRIVATE);
         maintenance = new TsoaMaintenance(this);
         buildDedicatedLauncherUI();
-        setLauncherStatus("Preparando o ambiente de compatibilidade...", "A instalação inicial do runtime pode levar alguns minutos.", true);
+        setLauncherStatus(R.string.tsoa_preparing_runtime, R.string.tsoa_initial_runtime_wait, true);
         RootFSInstaller.installIfNeeded(this, (success) -> {
             if (isFinishing() || isDestroyed()) return;
             rootFSReady = success;
             if (!success) {
-                setLauncherStatus("Não foi possível preparar o runtime.", "Verifique o espaço livre e tente novamente.", false);
-                setLauncherActionText("TENTAR NOVAMENTE");
+                setLauncherStatus(R.string.tsoa_runtime_failed, R.string.tsoa_check_free_space, false);
+                setLauncherActionText(R.string.tsoa_retry);
                 launcherAction.setOnClickListener((view) -> {
-                    setLauncherStatus("Preparando o ambiente...", "Extraindo os componentes do Winlator.", true);
+                    setLauncherStatus(R.string.tsoa_preparing_environment, R.string.tsoa_extracting_runtime, true);
                     RootFSInstaller.installIfNeeded(this, (retrySuccess) -> {
                         if (isFinishing() || isDestroyed()) return;
                         rootFSReady = retrySuccess;
                         if (retrySuccess) onLauncherRuntimeReady();
-                        else setLauncherStatus("Falha na preparação.", "Confira o armazenamento disponível e tente novamente.", false);
+                        else setLauncherStatus(R.string.tsoa_preparation_failed, R.string.tsoa_check_storage_retry, false);
                     });
                 });
                 return;
@@ -198,9 +207,12 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     private android.content.SharedPreferences launcherPreferences;
 
     private void buildDedicatedLauncherUI() {
+        currentMenuLanguage = new TsoaOptions(this).getMenuLanguage();
+        menuContext = TsoaMenuLanguage.context(this, currentMenuLanguage);
         launcherRoot = new FrameLayout(this);
         launcherRoot.setBackgroundColor(Color.rgb(9, 18, 22));
         ecoBackdrop = new EcoBackdropView(this);
+        ecoBackdrop.setMenuLabels(menuString(R.string.tsoa_settings), menuString(R.string.tsoa_about));
         ambience = new TsoaAmbience(this);
         launcherRoot.addView(ecoBackdrop, new FrameLayout.LayoutParams(-1, -1));
         launcherRoot.setOnTouchListener((view, event) -> {
@@ -234,11 +246,12 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         launcherMenu = new LinearLayout(this);
         launcherMenu.setOrientation(LinearLayout.VERTICAL);
         launcherMenu.setGravity(Gravity.CENTER_HORIZONTAL);
-        launcherAction = ecoButton("JOGAR", 14, Color.rgb(220, 233, 230));
+        launcherAction = ecoButton(menuString(R.string.tsoa_play), 14, Color.rgb(220, 233, 230));
+        setLauncherActionText(R.string.tsoa_play);
         launcherAction.setLetterSpacing(0.3f);
         launcherMenu.addView(launcherAction, new LinearLayout.LayoutParams(-1, dp(48)));
 
-        Button options = ecoButton("Configurações", 12, Color.rgb(174, 194, 194));
+        Button options = launcherOptions = ecoButton(menuString(R.string.tsoa_settings), 12, Color.rgb(174, 194, 194));
         options.setLetterSpacing(0.12f);
         LinearLayout.LayoutParams optionsParams = new LinearLayout.LayoutParams(-1, dp(48));
         optionsParams.topMargin = dp(8);
@@ -248,7 +261,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             cancelAutoLaunch();
             showLauncherOptions();
         });
-        Button about = ecoButton("Sobre", 12, Color.rgb(174, 194, 194));
+        Button about = launcherAbout = ecoButton(menuString(R.string.tsoa_about), 12, Color.rgb(174, 194, 194));
         about.setLetterSpacing(0.12f);
         launcherMenu.addView(about, new LinearLayout.LayoutParams(-1, dp(48)));
         about.setOnClickListener(view -> {
@@ -259,7 +272,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                     Uri.parse("https://store.steampowered.com/app/1672670/")));
             }
             catch (android.content.ActivityNotFoundException error) {
-                AppUtils.showToast(this, "Instale um navegador para abrir a página da Steam.");
+                AppUtils.showToast(this, menuString(R.string.tsoa_browser_required));
             }
         });
 
@@ -382,13 +395,44 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         return super.dispatchTouchEvent(event);
     }
 
-    private void setLauncherActionText(CharSequence text) {
+    private String menuString(int resource, Object... args) {
+        if (resource == 0) return "";
+        Context context = menuContext != null ? menuContext : TsoaMenuLanguage.context(this);
+        return context.getString(resource, args);
+    }
+
+    /** Refresh menu text in place, preserving jobs, listeners and game/runtime callbacks. */
+    private void applyMenuLanguageIfIdle() {
+        String language = new TsoaOptions(this).getMenuLanguage();
+        if (language.equals(currentMenuLanguage)) return;
+        // A settings change must never schedule or trigger an automatic game launch.
+        cancelAutoLaunch();
+        if (launcherBusy || importInProgress || gameLaunchActive || launcherRoot == null) return;
+        currentMenuLanguage = language;
+        menuContext = TsoaMenuLanguage.context(this, language);
+        launcherOptions.setText(menuString(R.string.tsoa_settings));
+        launcherAbout.setText(menuString(R.string.tsoa_about));
+        if (ecoBackdrop != null) ecoBackdrop.setMenuLabels(menuString(R.string.tsoa_settings), menuString(R.string.tsoa_about));
+        if (launcherActionResource != 0) {
+            CharSequence action = menuString(launcherActionResource);
+            launcherAction.setText(action);
+            if (ecoBackdrop != null) ecoBackdrop.setReflectionAction(action);
+        }
+        if (launcherStatusResource != 0) launcherStatus.setText(menuString(launcherStatusResource));
+        if (launcherDetailResource != 0) launcherDetail.setText(menuString(launcherDetailResource));
+        launcherRoot.requestLayout();
+    }
+
+    private void setLauncherActionText(int resource) {
+        launcherActionResource = resource;
+        CharSequence text = menuString(resource);
         launcherAction.setText(text);
         if (ecoBackdrop != null) ecoBackdrop.setReflectionAction(text);
     }
 
     private void applyLauncherOptions() {
         if (!dedicatedLauncher || ecoBackdrop == null) return;
+        applyMenuLanguageIfIdle();
         TsoaOptions options = new TsoaOptions(this);
         ecoBackdrop.applyOptions(options);
         if (ambience != null) ambience.applyOptions(options);
@@ -414,7 +458,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                 try {
                     ControlsProfile profile = TsoaGameControls.getEditableProfile(MainActivity.this, new TsoaOptions(MainActivity.this));
                     if (profile == null) {
-                        AppUtils.showToast(MainActivity.this, "Selecione ESC, RTS ou um perfil antes de editar.");
+                        AppUtils.showToast(MainActivity.this, menuString(R.string.tsoa_select_controls_before_edit));
                         return;
                     }
                     Intent editor = new Intent(MainActivity.this, ControlsEditorActivity.class);
@@ -422,7 +466,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                     startActivityForResult(editor, EDIT_INPUT_CONTROLS_REQUEST_CODE);
                 }
                 catch (Exception error) {
-                    AppUtils.showToast(MainActivity.this, "Não foi possível abrir os controles: " + error.getMessage());
+                    AppUtils.showToast(MainActivity.this, menuString(R.string.tsoa_controls_open_failed, TsoaMenuErrors.message(MainActivity.this, error)));
                 }
             }
             @Override public void resetControls() { TsoaGameControls.resetSelectedLayout(MainActivity.this); }
@@ -436,7 +480,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
 
     private boolean canMaintainGame() {
         if (rootFSReady && !launcherBusy && !gameLaunchActive && !importInProgress && !maintenance.isBusy()) return true;
-        AppUtils.showToast(this, "Aguarde a preparação terminar antes de alterar os arquivos do jogo.");
+        AppUtils.showToast(this, menuString(R.string.tsoa_wait_before_files));
         return false;
     }
 
@@ -452,7 +496,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             GameImportManager.isValidGameDirectory(GameImportManager.getGameDirectory(this))) {
             autoLaunchConsumed = true;
             autoLaunchScheduled = true;
-            AppUtils.showToast(this, "Abertura automática em 2 segundos. Toque no fundo ou use Voltar para cancelar.");
+            AppUtils.showToast(this, menuString(R.string.tsoa_auto_launch_countdown));
             launcherRoot.postDelayed(autoLaunch, 2000L);
         }
     }
@@ -461,9 +505,20 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         return (int)(value * getResources().getDisplayMetrics().density + 0.5f);
     }
 
-    private void setLauncherStatus(String status, String detail, boolean busy) {
+    private void setLauncherStatus(int status, int detail, boolean busy) {
+        launcherDetailResource = detail;
+        setLauncherStatusText(status, menuString(detail), busy);
+    }
+
+    private void setLauncherStatus(int status, String detail, boolean busy) {
+        launcherDetailResource = 0;
+        setLauncherStatusText(status, detail, busy);
+    }
+
+    private void setLauncherStatusText(int status, String detail, boolean busy) {
         if (launcherStatus == null) return;
-        launcherStatus.setText(status);
+        launcherStatusResource = status;
+        launcherStatus.setText(menuString(status));
         launcherDetail.setText(detail);
         launcherBusy = busy;
         launcherProgress.setVisibility(busy && importInProgress ? View.VISIBLE : View.GONE);
@@ -472,6 +527,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         // Initialization is intentionally silent; retain progress only for a user-requested import.
         launcherStatus.setVisibility(!busy || importInProgress ? View.VISIBLE : View.GONE);
         launcherDetail.setVisibility(!busy || importInProgress ? View.VISIBLE : View.GONE);
+        if (!busy) applyMenuLanguageIfIdle();
     }
 
     private void onLauncherRuntimeReady() {
@@ -479,11 +535,11 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         applyLauncherOptions();
         File gameDir = GameImportManager.getGameDirectory(this);
         boolean gameReady = GameImportManager.isValidGameDirectory(gameDir);
-        setLauncherStatus(gameReady ? "" : "SELECIONE A PASTA DO JOGO",
-            gameReady ? "" : "Escolha a pasta que contém TSOA.exe e TSOA_Data.", false);
+        setLauncherStatus(gameReady ? 0 : R.string.tsoa_choose_game_folder,
+            gameReady ? 0 : R.string.tsoa_choose_game_folder_detail, false);
         launcherStatus.setVisibility(gameReady ? View.GONE : View.VISIBLE);
         launcherDetail.setVisibility(gameReady ? View.GONE : View.VISIBLE);
-        setLauncherActionText(gameReady ? "JOGAR" : "IMPORTAR JOGO");
+        setLauncherActionText(gameReady ? R.string.tsoa_play : R.string.tsoa_import_game);
         launcherAction.setOnClickListener((view) -> {
             feedback(view);
             cancelAutoLaunch();
@@ -504,10 +560,10 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     private void importGameFolder(Uri treeUri) {
         importInProgress = true;
         launcherAction.setEnabled(false);
-        setLauncherActionText("IMPORTANDO...");
+        setLauncherActionText(R.string.tsoa_importing);
         launcherProgress.setVisibility(View.VISIBLE);
         launcherProgress.setIndeterminate(true);
-        setLauncherStatus("IMPORTANDO A INSTALAÇÃO", "Copiando todos os arquivos sem alterar a estrutura original.", true);
+        setLauncherStatus(R.string.tsoa_importing_installation, R.string.tsoa_copying_game, true);
 
         importExecutor.execute(() -> {
             try {
@@ -517,10 +573,10 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                     if (total > 0) {
                         launcherProgress.setMax(1000);
                         launcherProgress.setProgress((int)Math.min(1000, (copied * 1000L) / total));
-                        launcherDetail.setText(String.format(java.util.Locale.ROOT, "%s · %.2f / %.2f GB",
+                        launcherDetail.setText(menuString(R.string.tsoa_copy_progress,
                             currentFile, copied / 1073741824.0, total / 1073741824.0));
                     }
-                    else launcherDetail.setText(String.format(java.util.Locale.ROOT, "%s · %.2f GB copiados",
+                    else launcherDetail.setText(menuString(R.string.tsoa_copy_progress_unknown,
                         currentFile, copied / 1073741824.0));
                 }));
                 runOnUiThread(() -> {
@@ -534,8 +590,8 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                     importInProgress = false;
                     if (isFinishing() || isDestroyed()) return;
                     launcherProgress.setVisibility(View.GONE);
-                    setLauncherStatus("FALHA NA IMPORTAÇÃO", e.getMessage() != null ? e.getMessage() : "Não foi possível importar a pasta.", false);
-                    setLauncherActionText("TENTAR NOVAMENTE");
+                    setLauncherStatus(R.string.tsoa_import_failed, e.getMessage() != null ? TsoaMenuErrors.message(this, e) : menuString(R.string.tsoa_folder_import_failed), false);
+                    setLauncherActionText(R.string.tsoa_retry);
                     launcherAction.setOnClickListener((view) -> openGameFolderPicker());
                 });
             }
@@ -546,7 +602,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         if (isFinishing() || isDestroyed() || !launcherVisible) return;
         if (!rootFSReady || importInProgress || gameLaunchActive || launcherBusy) return;
         if (maintenance != null && maintenance.isBusy()) {
-            AppUtils.showToast(this, "Aguarde a operação dos saves terminar antes de jogar.");
+            AppUtils.showToast(this, menuString(R.string.tsoa_wait_for_saves));
             return;
         }
         File gameDir = GameImportManager.getGameDirectory(this);
@@ -555,7 +611,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             return;
         }
 
-        setLauncherStatus("PREPARANDO O CONTAINER", "Configurando Turnip, DXVK e Box64 para o TSOA.", true);
+        setLauncherStatus(R.string.tsoa_preparing_container, R.string.tsoa_configuring_runtime, true);
         ContainerManager manager = new ContainerManager(this);
         int containerId = launcherPreferences.getInt(PREF_CONTAINER_ID, 0);
         Container container = manager.getContainerById(containerId);
@@ -581,8 +637,8 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             manager.createContainerAsync(data, (createdContainer) -> {
                 if (isFinishing() || isDestroyed()) return;
                 if (createdContainer == null) {
-                    setLauncherStatus("NÃO FOI POSSÍVEL CRIAR O CONTAINER", "Confira o runtime e o espaço livre.", false);
-                    setLauncherActionText("TENTAR NOVAMENTE");
+                    setLauncherStatus(R.string.tsoa_container_failed, R.string.tsoa_check_runtime_space, false);
+                    setLauncherActionText(R.string.tsoa_retry);
                     launcherAction.setOnClickListener((view) -> ensureDedicatedContainerAndLaunch());
                     return;
                 }
@@ -598,8 +654,8 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             });
         }
         catch (JSONException e) {
-            setLauncherStatus("ERRO DE CONFIGURAÇÃO", e.getMessage(), false);
-            setLauncherActionText("TENTAR NOVAMENTE");
+            setLauncherStatus(R.string.tsoa_configuration_error, TsoaMenuErrors.message(this, e), false);
+            setLauncherActionText(R.string.tsoa_retry);
             launcherAction.setOnClickListener((view) -> ensureDedicatedContainerAndLaunch());
         }
     }
@@ -623,8 +679,8 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         }
         File executable = new File(GameImportManager.getGameDirectory(this), "TSOA.exe");
         if (!executable.isFile()) {
-            setLauncherStatus("EXECUTÁVEL NÃO ENCONTRADO", "A instalação importada não contém TSOA.exe.", false);
-            setLauncherActionText("IMPORTAR NOVAMENTE");
+            setLauncherStatus(R.string.tsoa_executable_missing, R.string.tsoa_installation_missing_exe, false);
+            setLauncherActionText(R.string.tsoa_import_again);
             launcherAction.setOnClickListener((view) -> openGameFolderPicker());
             return;
         }
@@ -634,7 +690,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         intent.putExtra("exec_path", executable.getAbsolutePath());
         intent.putExtra("tsoa_fe_mode", true);
         gameLaunchActive = true;
-        setLauncherStatus("INICIANDO TSOA", "Carregando o runtime Windows e a renderização Vulkan.", true);
+        setLauncherStatus(R.string.tsoa_starting_game, R.string.tsoa_loading_runtime, true);
         try {
             setLobbyActive(false);
             startActivity(intent);
@@ -642,8 +698,8 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         catch (Exception e) {
             setLobbyActive(true);
             gameLaunchActive = false;
-            setLauncherStatus("FALHA AO INICIAR O JOGO", e.getMessage(), false);
-            setLauncherActionText("TENTAR NOVAMENTE");
+            setLauncherStatus(R.string.tsoa_game_launch_failed, TsoaMenuErrors.message(this, e), false);
+            setLauncherActionText(R.string.tsoa_retry);
             launcherAction.setOnClickListener((view) -> ensureDedicatedContainerAndLaunch());
         }
     }
@@ -742,7 +798,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         if (dedicatedLauncher) {
             if (autoLaunchScheduled) {
                 cancelAutoLaunch();
-                AppUtils.showToast(this, "Abertura automática cancelada.");
+                AppUtils.showToast(this, menuString(R.string.tsoa_auto_launch_cancelled));
                 return;
             }
             finish();

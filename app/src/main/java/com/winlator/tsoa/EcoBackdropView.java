@@ -85,6 +85,8 @@ public final class EcoBackdropView extends View {
     private float cloudOffsetX;
     private float cloudOffsetY;
     private String reflectionAction = "JOGAR";
+    private String reflectionSettings = "Configurações";
+    private String reflectionAbout = "Sobre";
 
     private final Runnable frame = new Runnable() {
         @Override public void run() {
@@ -145,6 +147,13 @@ public final class EcoBackdropView extends View {
             reflectionAction = next;
             invalidate();
         }
+    }
+
+    /** Decorative reflections follow the actual menu language. */
+    public void setMenuLabels(String settings, String about) {
+        reflectionSettings = settings == null ? "" : settings;
+        reflectionAbout = about == null ? "" : about;
+        invalidate();
     }
 
     public void setActive(boolean value) {
@@ -514,8 +523,8 @@ public final class EcoBackdropView extends View {
         drawWaterText(canvas, "TSOA_FE", center, start, 15, 48);
         drawWaterText(canvas, "The Street of Adrift", center, start + gap * 0.48f, 8, 28);
         drawWaterText(canvas, reflectionAction, center, start + gap * 1.65f, 12, 37);
-        drawWaterText(canvas, "Configurações", center, start + gap * 2.65f, 10, 26);
-        drawWaterText(canvas, "Sobre", center, start + gap * 3.55f, 10, 20);
+        drawWaterText(canvas, reflectionSettings, center, start + gap * 2.65f, 10, 26);
+        drawWaterText(canvas, reflectionAbout, center, start + gap * 3.55f, 10, 20);
     }
 
     private void drawWaterText(Canvas canvas, String text, float x, float y, float sp, int alpha) {

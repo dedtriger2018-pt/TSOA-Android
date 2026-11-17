@@ -11,6 +11,7 @@ import android.os.Process;
 import android.view.ContextThemeWrapper;
 import android.widget.Toast;
 
+import com.winlator.R;
 import com.winlator.core.GameImportManager;
 
 import java.io.File;
@@ -52,8 +53,8 @@ public final class TsoaMaintenance {
 
     public void importSaves() {
         if (busy) return;
-        showDialog("Restaurar saves", "Escolha um backup ZIP criado pelo TSOA. Os saves atuais serão preservados em uma cópia antes da restauração.",
-            "ESCOLHER BACKUP", () -> {
+        showDialog(s(R.string.tsoa_maintenance_restore_title), s(R.string.tsoa_maintenance_restore_message),
+            s(R.string.tsoa_maintenance_choose_backup), () -> {
                 Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
                 intent.addCategory(Intent.CATEGORY_OPENABLE);
                 intent.setType("*/*");
@@ -68,7 +69,7 @@ public final class TsoaMaintenance {
     }
 
     public void verifyFiles() {
-        execute("Verificando arquivos…", () -> {
+        execute(s(R.string.tsoa_maintenance_verifying), () -> {
             File game = GameImportManager.getGameDirectory(activity);
             String[] files = {"TSOA.exe", "UnityPlayer.dll", "GameAssembly.dll", "baselib.dll", "TSOA_Data/boot.config",
                 "TSOA_Data/resources.assets", "TSOA_Data/resources.assets.resS"};
@@ -79,8 +80,8 @@ public final class TsoaMaintenance {
                 if (!file.isFile() || file.length() == 0) missing.append("• ").append(path).append('\n');
             }
             for (String path : directories) if (!new File(game, path).isDirectory()) missing.append("• ").append(path).append('/').append('\n');
-            if (missing.length() > 0) return "Arquivos ausentes ou vazios:\n\n" + missing + "\nImporte novamente a pasta completa do jogo.";
-            return "Os arquivos e as pastas essenciais do jogo estão presentes.\n\nEsta verificação confere presença e tamanho; não compara com uma cópia da Steam.";
+            if (missing.length() > 0) return s(R.string.tsoa_maintenance_missing_files, missing);
+            return s(R.string.tsoa_maintenance_files_present);
         });
     }
 
@@ -88,27 +89,27 @@ public final class TsoaMaintenance {
         if (requestCode != EXPORT_SAVES && requestCode != IMPORT_SAVES && requestCode != EXPORT_DIAGNOSTICS) return false;
         if (resultCode != Activity.RESULT_OK || data == null || data.getData() == null) return true;
         Uri uri = data.getData();
-        if (requestCode == EXPORT_SAVES) execute("Exportando saves…", () -> {
+        if (requestCode == EXPORT_SAVES) execute(s(R.string.tsoa_maintenance_exporting_saves), () -> {
             try (OutputStream output = activity.getContentResolver().openOutputStream(uri, "wt")) {
-                if (output == null) throw new IOException("Não foi possível abrir o arquivo escolhido.");
+                if (output == null) throw new IOException(s(R.string.tsoa_maintenance_cannot_open_file));
                 TsoaSaveArchive.write(new File(activity.getFilesDir(), SAVE_PATH), output);
             }
-            return "Backup dos saves exportado. Guarde esse ZIP antes de desinstalar o aplicativo.";
+            return s(R.string.tsoa_maintenance_saves_exported);
         });
-        else if (requestCode == IMPORT_SAVES) execute("Restaurando saves…", () -> {
+        else if (requestCode == IMPORT_SAVES) execute(s(R.string.tsoa_maintenance_restoring_saves), () -> {
             File backup;
             try (InputStream input = activity.getContentResolver().openInputStream(uri)) {
-                if (input == null) throw new IOException("Não foi possível ler o backup escolhido.");
+                if (input == null) throw new IOException(s(R.string.tsoa_maintenance_cannot_read_backup));
                 backup = TsoaSaveArchive.restore(new File(activity.getFilesDir(), SAVE_PATH), input);
             }
-            return "Saves restaurados." + (backup == null ? "" : "\n\nA cópia anterior foi preservada no aplicativo em:\n" + backup.getName());
+            return s(R.string.tsoa_maintenance_saves_restored) + (backup == null ? "" : s(R.string.tsoa_maintenance_previous_backup, backup.getName()));
         });
-        else execute("Exportando diagnóstico…", () -> {
+        else execute(s(R.string.tsoa_maintenance_exporting_diagnostics), () -> {
             try (OutputStream output = activity.getContentResolver().openOutputStream(uri, "wt")) {
-                if (output == null) throw new IOException("Não foi possível abrir o arquivo escolhido.");
+                if (output == null) throw new IOException(s(R.string.tsoa_maintenance_cannot_open_file));
                 writeDiagnostics(output);
             }
-            return "Diagnóstico exportado com os registros disponíveis e a versão do aplicativo.";
+            return s(R.string.tsoa_maintenance_diagnostics_exported);
         });
         return true;
     }
@@ -123,7 +124,7 @@ public final class TsoaMaintenance {
 
     private void startPicker(Intent intent, int requestCode) {
         try { activity.startActivityForResult(intent, requestCode); }
-        catch (Exception error) { showResult("Não foi possível abrir o seletor de arquivos do Android."); }
+        catch (Exception error) { showResult(s(R.string.tsoa_maintenance_cannot_open_picker)); }
     }
 
     private interface Job { String run() throws Exception; }
@@ -135,7 +136,11 @@ public final class TsoaMaintenance {
         worker.execute(() -> {
             String result;
             try { result = job.run(); }
-            catch (Exception error) { result = "Não foi possível concluir.\n\n" + (error.getMessage() == null ? "Confira o arquivo selecionado e o espaço disponível." : error.getMessage()); }
+            catch (Exception error) {
+                String detail = TsoaMenuErrors.message(activity, error);
+                result = s(R.string.tsoa_maintenance_failed,
+                    detail == null ? s(R.string.tsoa_maintenance_check_file_space) : detail);
+            }
             busy = false;
             final String text = result;
             activity.runOnUiThread(() -> { if (!closed && !activity.isFinishing() && !activity.isDestroyed()) showResult(text); });
@@ -158,13 +163,12 @@ public final class TsoaMaintenance {
     private String metadata() throws Exception {
         PackageInfo info = activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0);
         TsoaOptions options = new TsoaOptions(activity);
-        return "TSOA_FE — diagnóstico\n" + new Date() + "\n" +
-            "Pacote: " + activity.getPackageName() + "\nVersão: " + info.versionName + " (" + info.versionCode + ")\n" +
-            "Aparelho: " + Build.MANUFACTURER + " " + Build.MODEL + "\nAndroid: " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")\n" +
-            "ABI: " + android.text.TextUtils.join(", ", Build.SUPPORTED_ABIS) + "\nUID: " + Process.myUid() + "\n" +
-            "Resolução: " + options.getScreenSize() + "\nFPS limite: " + options.getFpsLimit() + "\nControles: " + options.getControlsMode() + "\n" +
-            "Arquivos essenciais presentes: " + GameImportManager.isValidGameDirectory(GameImportManager.getGameDirectory(activity)) + "\n" +
-            "Logs: últimos 4 MB de cada arquivo, quando disponíveis.\n";
+        return s(R.string.tsoa_maintenance_metadata,
+            new Date().toString(), activity.getPackageName(), info.versionName, info.versionCode,
+            Build.MANUFACTURER + " " + Build.MODEL, Build.VERSION.RELEASE, Build.VERSION.SDK_INT,
+            android.text.TextUtils.join(", ", Build.SUPPORTED_ABIS), Process.myUid(),
+            options.getScreenSize(), options.getFpsLimit(), options.getControlsMode(),
+            GameImportManager.isValidGameDirectory(GameImportManager.getGameDirectory(activity)));
     }
 
     private static void addLog(ZipOutputStream zip, String name, File file) throws IOException {
@@ -188,18 +192,22 @@ public final class TsoaMaintenance {
         zip.closeEntry();
     }
 
-    private void showResult(String message) { showDialog("TSOA_FE", message, "OK", null); }
+    private void showResult(String message) { showDialog("TSOA_FE", message, s(R.string.tsoa_maintenance_ok), null); }
 
     private void showDialog(String title, String message, String positive, Runnable action) {
         if (closed || activity.isFinishing() || activity.isDestroyed()) return;
         AlertDialog.Builder builder = new AlertDialog.Builder(new ContextThemeWrapper(activity, android.R.style.Theme_Material_Dialog_Alert))
             .setTitle(title).setMessage(message).setPositiveButton(positive, (dialog, which) -> { if (action != null) action.run(); });
-        if (action != null) builder.setNegativeButton("CANCELAR", null);
+        if (action != null) builder.setNegativeButton(s(R.string.tsoa_maintenance_cancel), null);
         AlertDialog dialog = builder.create();
         dialog.show();
         if (dialog.getWindow() != null) dialog.getWindow().setBackgroundDrawable(new ColorDrawable(0xff102027));
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(0xffa9c9c6);
         if (action != null) dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(0xff8eaaaa);
+    }
+
+    private String s(int resource, Object... arguments) {
+        return TsoaMenuLanguage.get(activity, resource, arguments);
     }
 
     private static String timestamp() { return new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(new Date()); }

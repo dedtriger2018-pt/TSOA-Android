@@ -60,12 +60,15 @@ public final class TsoaOptionsDialog {
     }
 
     public static void show(Activity activity, Runnable onChanged, Actions actions) {
-        if (!activity.isFinishing()) new TsoaOptionsDialog(activity, onChanged, actions).showPage("Opções", 0);
+        if (!activity.isFinishing()) new TsoaOptionsDialog(activity, onChanged, actions).showPage(0);
     }
 
-    private void showPage(String title, int page) {
+    private void showPage(int page) {
         if (activity.isFinishing()) return;
-        if (dialog != null) dialog.dismiss();
+        if (dialog != null) {
+            dialog.setOnDismissListener(null);
+            dialog.dismiss();
+        }
         dialog = new Dialog(activity);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
 
@@ -78,7 +81,9 @@ public final class TsoaOptionsDialog {
         surface.setStroke(dp(1), Color.rgb(43, 68, 72));
         shell.setBackground(surface);
 
-        TextView heading = text(title, 20, TEXT);
+        int[] titles = {R.string.tsoa_options, R.string.tsoa_video, R.string.tsoa_controls,
+                R.string.tsoa_mouse, R.string.tsoa_audio, R.string.tsoa_ambience, R.string.tsoa_comfort, R.string.tsoa_files};
+        TextView heading = text(s(titles[page]), 20, TEXT);
         heading.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
         heading.setPadding(0, dp(12), 0, dp(12));
         shell.addView(heading, new LinearLayout.LayoutParams(-1, -2));
@@ -103,10 +108,10 @@ public final class TsoaOptionsDialog {
             default: overview(); break;
         }
 
-        Button close = button(page == 0 ? "FECHAR" : "VOLTAR");
+        Button close = button(page == 0 ? s(R.string.tsoa_close) : s(R.string.tsoa_back));
         close.setOnClickListener(view -> {
             if (page == 0) dialog.dismiss();
-            else showPage("Opções", 0);
+            else showPage(0);
         });
         shell.addView(close, new LinearLayout.LayoutParams(-1, dp(48)));
         dialog.setContentView(shell);
@@ -123,108 +128,130 @@ public final class TsoaOptionsDialog {
     }
 
     private void overview() {
-        note("Seus ajustes são salvos automaticamente. As opções do jogo valem na próxima vez que tocar em Jogar.");
-        action("Vídeo", "Resolução, proporção e limite de quadros", () -> showPage("Vídeo", 1), false);
-        action("Controles na tela", "Botão ESC, RTS ou seu próprio layout", () -> showPage("Controles na tela", 2), false);
-        action("Mouse e toque", "Sensibilidade e gestos", () -> showPage("Mouse e toque", 3), false);
-        action("Áudio", "Volume e modo silencioso", () -> showPage("Áudio", 4), false);
-        action("Ambiente", "Chuva, brilho e movimento do lobby", () -> showPage("Ambiente", 5), false);
-        action("Conforto", "Tela ligada, vibração e início automático", () -> showPage("Conforto", 6), false);
-        action("Arquivos e diagnóstico", "Saves, arquivos do jogo e registros", () -> showPage("Arquivos e diagnóstico", 7), false);
+        String[] languages = {"en", "zh-CN", "pt"};
+        int selectedLanguage = 2;
+        for (int i = 0; i < languages.length; i++) {
+            if (languages[i].equals(options.getMenuLanguage())) selectedLanguage = i;
+        }
+        spinner(s(R.string.tsoa_menu_language), new String[]{"English", "简体中文", "Português"}, selectedLanguage, position -> {
+            preferences.edit().putString("menu_language", languages[position]).apply();
+            changed();
+            showPage(0);
+        });
+        note(s(R.string.tsoa_menu_language_detail));
+        note(s(R.string.tsoa_options_autosave));
+        action(s(R.string.tsoa_video), s(R.string.tsoa_video_summary), () -> showPage(1), false);
+        action(s(R.string.tsoa_controls), s(R.string.tsoa_controls_summary), () -> showPage(2), false);
+        action(s(R.string.tsoa_mouse), s(R.string.tsoa_mouse_summary), () -> showPage(3), false);
+        action(s(R.string.tsoa_audio), s(R.string.tsoa_audio_summary), () -> showPage(4), false);
+        action(s(R.string.tsoa_ambience), s(R.string.tsoa_ambience_summary), () -> showPage(5), false);
+        action(s(R.string.tsoa_comfort), s(R.string.tsoa_comfort_summary), () -> showPage(6), false);
+        action(s(R.string.tsoa_files), s(R.string.tsoa_files_summary), () -> showPage(7), false);
         String version = "";
         try { version = activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0).versionName; }
         catch (Exception ignored) {}
-        note("TSOA_FE · " + version + "\nWinlator · Wine · Box64 · Mesa\nJogo: Caramel-Mocha Studio / LoveStoryProject");
+        note(s(R.string.tsoa_credits, version));
     }
 
     private void video() {
         String[] all = activity.getResources().getStringArray(R.array.screen_size_entries);
         String[] labels = Arrays.copyOfRange(all, 1, all.length);
+        labels[0] = s(R.string.tsoa_native_resolution);
         String[] values = new String[labels.length];
         for (int i = 0; i < values.length; i++) values[i] = i == 0 ? "native" : labels[i].trim().split("\\s+")[0];
-        choice("Resolução do jogo", "screen_size", labels, values, options.getScreenSize());
-        choice("Proporção da imagem", "aspect_mode", new String[]{"Preservar proporção", "Preencher a tela"},
+        choice(s(R.string.tsoa_game_resolution), "screen_size", labels, values, options.getScreenSize());
+        choice(s(R.string.tsoa_aspect_ratio), "aspect_mode", new String[]{s(R.string.tsoa_aspect_fit), s(R.string.tsoa_aspect_stretch)},
                 new String[]{"fit", "stretch"}, options.getAspectMode());
-        toggle("Tela cheia", "Oculta as barras do Android durante o jogo.", "fullscreen", options.isFullscreen());
-        intChoice("Limite de quadros", "fps_limit", new String[]{"Sem limite", "30 FPS", "60 FPS"},
+        toggle(s(R.string.tsoa_fullscreen), s(R.string.tsoa_fullscreen_detail), "fullscreen", options.isFullscreen());
+        intChoice(s(R.string.tsoa_fps_limit), "fps_limit", new String[]{s(R.string.tsoa_unlimited), s(R.string.tsoa_fps_30), s(R.string.tsoa_fps_60)},
                 new int[]{0, 30, 60}, options.getFpsLimit());
-        intChoice("HDR simulado", "game_hdr_mode", new String[]{"Desligado", "Suave", "Marcante"},
+        intChoice(s(R.string.tsoa_simulated_hdr), "game_hdr_mode", new String[]{s(R.string.tsoa_off), s(R.string.tsoa_soft), s(R.string.tsoa_vivid)},
                 new int[]{0, 1, 2}, options.getGameHdrMode());
-        note("Suave realça discretamente. Marcante aumenta o contraste e a intensidade das cores, mantendo detalhes nas luzes e sombras. Afeta somente o jogo e não ativa HDR real da tela. Vale ao abrir ou voltar à partida; deixe desligado se notar perda de fluidez.");
-        note("Resoluções maiores exigem mais do aparelho. 960 × 544 é o ponto de partida testado no Honor X8.");
+        note(s(R.string.tsoa_hdr_detail));
+        toggle(s(R.string.tsoa_soft_bloom), s(R.string.tsoa_soft_bloom_detail),
+                "game_bloom_enabled", options.isGameBloomEnabled());
+        toggle(s(R.string.tsoa_fxaa), s(R.string.tsoa_fxaa_detail),
+                "game_fxaa_enabled", options.isGameFxaaEnabled());
+        slider(s(R.string.tsoa_game_sharpening), "game_sharpening_strength", 0, 100,
+                options.getGameSharpeningStrength(), false, "%");
+        note(s(R.string.tsoa_game_sharpening_detail));
+        toggle(s(R.string.tsoa_fsr), s(R.string.tsoa_fsr_detail),
+                "game_fsr_enabled", options.isGameFsrEnabled());
+        note(s(R.string.tsoa_game_filters_detail));
+        note(s(R.string.tsoa_resolution_detail));
     }
 
     private void controls() {
         TsoaGameControls.ensureProfiles(activity);
-        choice("Controles na tela", "controls_mode", new String[]{"Ocultos", "Somente ESC / Menu", "RTS", "Personalizado"},
+        choice(s(R.string.tsoa_controls), "controls_mode", new String[]{s(R.string.tsoa_controls_hidden), s(R.string.tsoa_controls_esc), s(R.string.tsoa_controls_rts), s(R.string.tsoa_controls_custom)},
                 new String[]{"off", "esc", "rts", "custom"}, options.getControlsMode());
-        note("Os controles são opcionais. O modo mínimo mostra apenas ESC para abrir o menu do jogo.");
+        note(s(R.string.tsoa_controls_detail));
         ArrayList<ControlsProfile> profiles = new InputControlsManager(activity).getProfiles(true);
         if (!profiles.isEmpty()) {
             String[] names = new String[profiles.size() + 1];
             int[] ids = new int[profiles.size() + 1];
-            names[0] = "Selecionar um perfil";
+            names[0] = s(R.string.tsoa_select_profile);
             ids[0] = 0;
             for (int i = 0; i < profiles.size(); i++) {
                 names[i + 1] = profiles.get(i).getName();
                 ids[i + 1] = profiles.get(i).id;
             }
-            intChoice("Perfil personalizado", "controls_profile_id", names, ids, options.getProfileId());
+            intChoice(s(R.string.tsoa_custom_profile), "controls_profile_id", names, ids, options.getProfileId());
         }
-        slider("Visibilidade dos botões", "controls_opacity", 20, 100, Math.round(options.getControlsOpacity() * 100), true, "%");
-        action("Editar teclas e posições", "Mover, redimensionar e escolher teclas no editor", actions::editControls, true);
-        action("Restaurar layout padrão", "Voltar ao botão ESC; seus perfis são preservados", () -> {
+        slider(s(R.string.tsoa_controls_opacity), "controls_opacity", 20, 100, Math.round(options.getControlsOpacity() * 100), true, "%");
+        action(s(R.string.tsoa_edit_controls), s(R.string.tsoa_edit_controls_detail), actions::editControls, true);
+        action(s(R.string.tsoa_reset_controls), s(R.string.tsoa_reset_controls_detail), () -> {
             new AlertDialog.Builder(activity)
-                    .setTitle("Restaurar o botão ESC?")
-                    .setMessage("O layout mínimo será restaurado. Seus perfis personalizados não serão apagados.")
-                    .setNegativeButton("Cancelar", null)
-                    .setPositiveButton("Restaurar", (alert, which) -> {
+                    .setTitle(s(R.string.tsoa_reset_controls_title))
+                    .setMessage(s(R.string.tsoa_reset_controls_message))
+                    .setNegativeButton(s(R.string.tsoa_cancel), null)
+                    .setPositiveButton(s(R.string.tsoa_restore), (alert, which) -> {
                         preferences.edit().putString("controls_mode", "esc").putFloat("controls_opacity", 0.55f).apply();
                         actions.resetControls();
                         changed();
-                        showPage("Controles na tela", 2);
+                        showPage(2);
                     }).show();
         }, false);
     }
 
     private void mouse() {
-        slider("Velocidade do cursor", "cursor_speed", 25, 300, Math.round(options.getCursorSpeed() * 100), true, "%");
-        toggle("Toque para clicar", "Um toque curto corresponde ao botão esquerdo.", "tap_to_click", options.isTapToClick());
-        toggle("Segurar para clique direito", "Mantenha o dedo parado para o botão direito.", "long_press_right_click", options.isLongPressRightClick());
+        slider(s(R.string.tsoa_cursor_speed), "cursor_speed", 25, 300, Math.round(options.getCursorSpeed() * 100), true, "%");
+        toggle(s(R.string.tsoa_mouse_tap), s(R.string.tsoa_mouse_tap_detail), "tap_to_click", options.isTapToClick());
+        toggle(s(R.string.tsoa_mouse_hold), s(R.string.tsoa_mouse_hold_detail), "long_press_right_click", options.isLongPressRightClick());
     }
 
     private void audio() {
-        slider("Volume do jogo", "volume", 0, 100, options.getVolume(), false, "%");
-        toggle("Silenciar", "Mantém o volume escolhido para quando reativar o áudio.", "mute", options.isMuted());
-        note("Aplicado ao áudio do jogo na próxima abertura. A disponibilidade de som também depende da compatibilidade do jogo.");
+        slider(s(R.string.tsoa_game_volume), "volume", 0, 100, options.getVolume(), false, "%");
+        toggle(s(R.string.tsoa_mute), s(R.string.tsoa_mute_detail), "mute", options.isMuted());
+        note(s(R.string.tsoa_audio_detail));
     }
 
     private void ambience() {
-        intChoice("Intensidade da chuva", "rain_intensity", new String[]{"Suave", "Normal", "Forte"},
+        intChoice(s(R.string.tsoa_rain_intensity), "rain_intensity", new String[]{s(R.string.tsoa_soft), s(R.string.tsoa_normal), s(R.string.tsoa_strong)},
                 new int[]{1, 2, 3}, options.getRainIntensity());
-        slider("Brilho do fundo", "background_brightness", 35, 100,
+        slider(s(R.string.tsoa_background_brightness), "background_brightness", 35, 100,
                 Math.round(options.getBackgroundBrightness() * 100), true, "%");
-        toggle("Reduzir movimento", "Pausa a animação do ambiente e mantém o fundo estático.", "reduced_motion", options.isReducedMotion());
-        toggle("Som do ambiente", "Chuva e vento suaves somente nesta tela inicial.", "ambience_enabled", options.isAmbienceEnabled());
-        slider("Volume do ambiente", "ambience_volume", 0, 100, options.getAmbienceVolume(), false, "%");
-        note("A chuva faz parte do lobby. A animação é pausada quando o aplicativo fica em segundo plano ou o jogo abre.");
-        note("O som do lobby também pausa ao abrir o jogo. Este volume é separado do áudio da partida e respeita o volume de mídia do aparelho.");
+        toggle(s(R.string.tsoa_reduced_motion), s(R.string.tsoa_reduced_motion_detail), "reduced_motion", options.isReducedMotion());
+        toggle(s(R.string.tsoa_ambience_sound), s(R.string.tsoa_ambience_sound_detail), "ambience_enabled", options.isAmbienceEnabled());
+        slider(s(R.string.tsoa_ambience_volume), "ambience_volume", 0, 100, options.getAmbienceVolume(), false, "%");
+        note(s(R.string.tsoa_rain_detail));
+        note(s(R.string.tsoa_ambience_audio_detail));
     }
 
     private void comfort() {
-        toggle("Manter a tela ligada", "Enquanto o aplicativo estiver aberto.", "keep_screen_on", options.isKeepScreenOn());
-        toggle("Resposta tátil", "Vibração breve nos botões do lobby.", "haptics", options.isHaptics());
-        toggle("Abrir o jogo automaticamente", "Na próxima entrada no aplicativo, após preparar os arquivos.", "auto_launch", options.isAutoLaunch());
-        note("Para interromper o início automático, use Voltar durante a contagem exibida no lobby.");
+        toggle(s(R.string.tsoa_keep_screen_on), s(R.string.tsoa_keep_screen_on_detail), "keep_screen_on", options.isKeepScreenOn());
+        toggle(s(R.string.tsoa_haptics), s(R.string.tsoa_haptics_detail), "haptics", options.isHaptics());
+        toggle(s(R.string.tsoa_auto_launch), s(R.string.tsoa_auto_launch_detail), "auto_launch", options.isAutoLaunch());
+        note(s(R.string.tsoa_auto_launch_cancel_note));
     }
 
     private void files() {
-        action("Fazer backup dos saves", "Exportar um arquivo ZIP para o local escolhido", actions::exportSaves, true);
-        action("Restaurar saves", "Importar um backup de progresso do jogo", actions::importSaves, true);
-        action("Verificar arquivos", "Conferir os arquivos essenciais sem reinstalar", actions::verifyFiles, true);
-        action("Exportar diagnóstico", "Salvar registros para investigar algum problema", actions::exportDiagnostics, true);
-        action("Importar outra pasta do jogo", "Selecionar a pasta que contém TSOA.exe", actions::importGame, true);
-        note("Os saves ficam nos dados privados do aplicativo. Faça um backup antes de desinstalar o TSOA_FE.");
+        action(s(R.string.tsoa_export_saves), s(R.string.tsoa_export_saves_detail), actions::exportSaves, true);
+        action(s(R.string.tsoa_import_saves), s(R.string.tsoa_import_saves_detail), actions::importSaves, true);
+        action(s(R.string.tsoa_verify_files), s(R.string.tsoa_verify_files_detail), actions::verifyFiles, true);
+        action(s(R.string.tsoa_export_diagnostics), s(R.string.tsoa_export_diagnostics_detail), actions::exportDiagnostics, true);
+        action(s(R.string.tsoa_import_game_folder), s(R.string.tsoa_import_game_folder_detail), actions::importGame, true);
+        note(s(R.string.tsoa_saves_note));
     }
 
     private void choice(String label, String key, String[] labels, String[] values, String selected) {
@@ -366,6 +393,10 @@ public final class TsoaOptionsDialog {
         text.setTextSize(size);
         text.setTextColor(color);
         return text;
+    }
+
+    private String s(int resource, Object... arguments) {
+        return TsoaMenuLanguage.get(activity, resource, arguments);
     }
 
     private void changed() {

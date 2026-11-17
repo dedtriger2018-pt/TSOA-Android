@@ -66,6 +66,11 @@ jobs:
       - name: Validate TSOA game color modes
         run: python3 tools/tests/test_tsoa_game_color.py
 
+      - name: Validate TSOA menu languages and spatial options
+        run: |
+          python3 tools/tests/test_tsoa_menu_language.py
+          python3 tools/tests/test_tsoa_spatial_filters.py
+
       - name: Build debug APK
         run: |
           chmod +x ./gradlew

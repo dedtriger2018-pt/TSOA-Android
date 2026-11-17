@@ -28,6 +28,24 @@ public final class TsoaOptions {
 
     public boolean isFullscreen() { return preferences.getBoolean("fullscreen", true); }
 
+    /** Menu-only language; deliberately independent from Android/Wine locale preferences. */
+    public String getMenuLanguage() {
+        String language = preferences.getString("menu_language", "pt");
+        return "en".equals(language) || "zh-CN".equals(language) ? language : "pt";
+    }
+
+    /** Optional game-only renderer effect; disabled by default for lower GPU cost. */
+    public boolean isGameBloomEnabled() { return preferences.getBoolean("game_bloom_enabled", false); }
+
+    public boolean isGameFxaaEnabled() { return preferences.getBoolean("game_fxaa_enabled", false); }
+
+    /** Extra adaptive sharpening strength, independent from the optional upscaler. */
+    public int getGameSharpeningStrength() {
+        return Math.max(0, Math.min(100, preferences.getInt("game_sharpening_strength", 0)));
+    }
+
+    public boolean isGameFsrEnabled() { return preferences.getBoolean("game_fsr_enabled", false); }
+
     public int getFpsLimit() {
         int value = preferences.getInt("fps_limit", 0);
         return value == 30 || value == 60 ? value : 0;

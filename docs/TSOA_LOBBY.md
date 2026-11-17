@@ -6,10 +6,12 @@ The centered title and text-only buttons adapt to portrait/landscape without the
 
 ## Settings
 
-`com.winlator.tsoa.TsoaOptions` stores launcher preferences in `naninovel_launcher`, separate from runtime compatibility preferences. Video, input and audio settings apply on the next game launch; ambience settings update immediately.
+`com.winlator.tsoa.TsoaOptions` stores launcher preferences in `naninovel_launcher`, separate from runtime compatibility preferences. Video image filters apply on game launch or when returning to a reused game activity. Resolution, input and audio settings apply on the next game launch; ambience settings update immediately.
 
 - Resolution, preserved/stretched aspect, Android system bars and a DXVK frame limit.
 - Optional game-only SDR color presets labeled HDR simulado (off by default, Suave or Marcante). These reuse the existing Winlator color pass with a bounded lightness curve and adaptive vibrance. They do not enable HDR output or change the lobby. Manual in-game brightness/contrast/gamma filters remain usable.
+- Optional soft bloom, FXAA, adaptive sharpening and FSR 1.0 for the game image. All are off by default and independent from the HDR mode.
+- Menu language: English, 简体中文 or Português. The game language is unchanged.
 - Optional controls: hidden, one ESC button, the existing RTS layout or a custom profile. The existing editor supports key mapping, movement, resizing and element opacity. Creating a custom layout duplicates ESC instead of editing the minimal layout. Reset preserves custom profiles and keeps a copy of the prior ESC layout.
 - Cursor sensitivity, tap-to-click and long-press right click. The existing two-finger right click remains available.
 - Session audio gain/mute through ALSA/PulseAudio. This does not fix FMOD/device compatibility or change the phone's global volume.
@@ -19,13 +21,31 @@ The centered title and text-only buttons adapt to portrait/landscape without the
 
 ## HDR-style game color
 
-The enhanced presets replace the earlier small brightness/contrast/gamma offsets. Suave uses strength 0.45; Marcante uses 1.0. A bounded HSL-lightness S curve deepens shadows and lifts highlights, followed by gamut-limited adaptive vibrance. Black, white, neutral grays and saturated primary endpoints remain stable. The shader uses one source texture sample and the same existing color pass; no bloom, LUT texture or additional rendering pass is added. This remains SDR enhancement, not HDR display output.
+The enhanced presets replace the earlier small brightness/contrast/gamma offsets. Suave uses strength 0.45; Marcante uses 1.0. A bounded HSL-lightness S curve deepens shadows and lifts highlights, followed by gamut-limited adaptive vibrance. Black, white, neutral grays and saturated primary endpoints remain stable. The shader uses one source texture sample and the same existing color pass; the HDR mode alone adds no bloom, LUT texture or extra rendering pass. Optional bloom and spatial filters are separate settings. This remains SDR enhancement, not HDR display output.
 
 The game activity can be reused because it is singleTask. It now checks the saved mode on resume and applies it only when the lobby preference actually changed. This fixes stale selections while preserving manual filters when the preference is unchanged. Switching Off clears automatic enhancement; manual color adjustments and other effects remain intact.
 
 `TSOA_FE_DIAG` and exported `redirector.log` include a mode-applied record. The first actual color draw per effect/program/strength also records `hdrStrength`, surface dimensions, initial source framebuffer status and GL error. File logging is posted off the GL thread and no per-frame log is emitted. This distinguishes a selected menu mode from an actual shader draw on the phone.
 
 `python3 tools/tests/test_tsoa_game_color.py` exercises the production Java helper/effect with minimal platform interfaces: mode reuse, live uniform changes, bounded strength, Off behavior and preservation of manual effects. Host validation additionally compiled and rendered the exact Java-generated GLSL on Mesa GLES3, checking finite/gamut-bound output, Off identity, neutral/primary preservation and visible color changes. It does not establish device FPS or validate the Honor's BGRA framebuffer; those require the device draw diagnostic and visual test.
+
+## Soft bloom and spatial game filters
+
+Soft bloom extracts highlights into two quarter-width/quarter-height RGBA8 targets, with a soft threshold and horizontal/vertical five-tap Gaussian blur. Three small prepasses feed the existing color pass, which applies a gentle 0.16 screen blend. Dark/mid-gray fields stay unchanged; alpha is preserved. At a 2400 × 1080 display the two bloom targets total 1,296,000 bytes. They are allocated only on use, rebuilt after resize/context loss, and released after disabling; cleanup waits for a current GL context after pause. Bloom does not reset HDR or manual color values.
+
+The optional spatial chain captures the actual guest scene at its selected resolution, before display scaling. FSR 1.0 uses AMD EASU's 12-tap edge-adaptive reconstruction into the displayed game area, followed by RCAS. It activates only when both display-area dimensions exceed the guest dimensions, preserving the existing aspect/stretch selection. It does not lower the game's resolution automatically; select a lower resolution in Video first. At native resolution the upscaler adds no pass. A failed source FBO falls back to normal rendering.
+
+FXAA smooths high-contrast edges and may soften text. The 0–100% sharpening control uses AMD CAS alone; with active FSR it adjusts RCAS instead, avoiding two stacked sharpeners. Zero disables standalone sharpening and keeps a soft RCAS preset with FSR. The order is EASU (when scaling), optional FXAA, CAS **or** RCAS, then the existing color/HDR/bloom effects. Existing manually selected effects remain available. Android controls and the lobby are outside these game image passes.
+
+EASU, CAS and RCAS are full-precision GLES 3.0 adaptations of the MIT-licensed AMD references; see `assets/licenses/AMD_FidelityFX.txt`. EASU uses the unscaled source texture, not a previously enlarged display image. The existing composer buffers are reused; FSR additionally holds one guest-size RGBA8 capture. Disabling all automatic effects retains the renderer's normal path. No temporal frame generation is included: real 2× interpolation requires a distinct source-frame timeline, history, motion estimation, disocclusion handling and display-paced presentation that this fork does not yet provide.
+
+The first spatial draw after a parameter/dimension change logs requested/active FSR, source/output sizes, FXAA and sharpening to `TSOA_FE_DIAG`/`redirector.log`. Tests cover production preferences and bounds, GL state/lifecycle and draw order, exact GLSL compilation, finite colors, alpha, small/odd surfaces, and EASU against AMD's reference. Bloom Off retains the previously tested HDR shader output. Host GLES tests do not measure Adreno 610 performance. On the Honor, start with effects off and enable one at a time; performance gains from a lower render resolution depend on the game's workload and filter cost.
+
+## Menu languages
+
+The launcher, settings pages, progress/errors and decorative menu reflections use matching Portuguese, English and Simplified Chinese resources. `menu_language` defaults to Portuguese and is persisted separately from Wine/game preferences. A cloned configuration context supplies the selected language: neither the process/system locale nor the Wine locale changes. Labels refresh in place when idle; a change during preparation/import/launch waits until that work completes. Translation never recreates the activity or restarts installation/game import. Unknown technical exception details remain available for diagnostics.
+
+`python3 tools/tests/test_tsoa_menu_language.py` checks actual production preferences/context isolation and resource-key/format parity in all four resource files (default Portuguese plus the three explicit locales). `python3 tools/tests/test_tsoa_spatial_filters.py` checks actual filter defaults, persistence and sharpening bounds. Both run in GitHub Actions alongside the game-color/bloom lifecycle tests and APK build.
 
 ## Ambient audio
 

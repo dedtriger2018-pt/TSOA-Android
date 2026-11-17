@@ -3,7 +3,7 @@ package com.winlator.tsoa;
 import com.winlator.renderer.GLRenderer;
 import com.winlator.renderer.effects.ColorEffect;
 
-/** A game-only HDR-style SDR preset in Winlator's existing color correction pass. */
+/** Game-only soft bloom and an HDR-style SDR preset in Winlator's existing color correction pass. */
 public final class TsoaGameColor {
     private TsoaGameColor() {}
 
@@ -20,7 +20,7 @@ public final class TsoaGameColor {
         if (mode != 1 && mode != 2) {
             if (effect != null && effect.getHdrStrength() > 0.0f) {
                 effect.setHdrStrength(0.0f);
-                if (effect.getBrightness() == 0.0f && effect.getContrast() == 0.0f && effect.getGamma() == 1.0f) {
+                if (isNeutral(effect)) {
                     renderer.effectComposer.removeEffect(effect);
                 }
                 else renderer.effectComposer.addEffect(effect);
@@ -37,4 +37,27 @@ public final class TsoaGameColor {
         effect.setHdrStrength(mode == 1 ? 0.45f : 1.0f);
         renderer.effectComposer.addEffect(effect);
     }
+
+    /** Bloom is independent: changing it never resets HDR or manual color controls. */
+    public static void applyBloom(GLRenderer renderer, boolean enabled) {
+        if (renderer == null) return;
+        ColorEffect effect = renderer.effectComposer.getEffect(ColorEffect.class);
+        if (enabled) {
+            if (effect == null) effect = new ColorEffect();
+            effect.setBloomEnabled(true);
+            renderer.effectComposer.addEffect(effect);
+        } else if (effect != null && effect.isBloomEnabled()) {
+            effect.setBloomEnabled(false);
+            if (isNeutral(effect)) renderer.effectComposer.removeEffect(effect);
+            else renderer.effectComposer.addEffect(effect);
+            renderer.effectComposer.releaseBloomResources();
+        }
+    }
+
+    private static boolean isNeutral(ColorEffect effect) {
+        return !effect.isBloomEnabled() && effect.getHdrStrength() == 0.0f
+                && effect.getBrightness() == 0.0f && effect.getContrast() == 0.0f
+                && effect.getGamma() == 1.0f;
+    }
+
 }

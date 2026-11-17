@@ -119,6 +119,17 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         else drawFrame();
     }
 
+    int getGameWidth() { return xServer.screenInfo.width; }
+    int getGameHeight() { return xServer.screenInfo.height; }
+
+    /** Capture the scene at the guest render size before spatial upscaling. */
+    void drawNativeFrame() {
+        GLES20.glViewport(0, 0, getGameWidth(), getGameHeight());
+        viewportNeedsUpdate = false;
+        try { drawFrame(); }
+        finally { viewportNeedsUpdate = true; }
+    }
+
     protected void drawFrame() {
         if (viewportNeedsUpdate) {
             if (fullscreen) {

@@ -146,6 +146,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private boolean dedicatedLauncherMode;
     private TsoaOptions tsoaOptions;
     private int appliedGameHdrMode = -1;
+    private Boolean appliedGameBloomEnabled;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -632,18 +633,38 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         wincomponents = null;
     }
 
+    private String appliedGameSpatialOptions;
+
     private void applyDedicatedGameColorOptions(String source) {
         if (!dedicatedLauncherMode || tsoaOptions == null || xServerView == null) return;
         int mode = tsoaOptions.getGameHdrMode();
         // A singleTask game activity may be resumed after a lobby setting changes.
         // Keep manual screen effects intact when the lobby preference is unchanged.
-        if (mode == appliedGameHdrMode) return;
-        TsoaGameColor.apply(xServerView.getRenderer(), mode);
-        String diagnostic = "Game HDR preference applied: source=" + source +
-                " mode=" + mode + " previous=" + appliedGameHdrMode;
-        Log.i("TSOA_FE_DIAG", diagnostic);
-        TsoaRedirectorV2Log.append(this, diagnostic);
-        appliedGameHdrMode = mode;
+        if (mode != appliedGameHdrMode) {
+            TsoaGameColor.apply(xServerView.getRenderer(), mode);
+            String diagnostic = "Game HDR preference applied: source=" + source +
+                    " mode=" + mode + " previous=" + appliedGameHdrMode;
+            Log.i("TSOA_FE_DIAG", diagnostic);
+            TsoaRedirectorV2Log.append(this, diagnostic);
+            appliedGameHdrMode = mode;
+        }
+        boolean bloom = tsoaOptions.isGameBloomEnabled();
+        if (appliedGameBloomEnabled == null || bloom != appliedGameBloomEnabled) {
+            TsoaGameColor.applyBloom(xServerView.getRenderer(), bloom);
+            String diagnostic = "Game bloom preference applied: source=" + source +
+                    " enabled=" + bloom + " previous=" + appliedGameBloomEnabled;
+            Log.i("TSOA_FE_DIAG", diagnostic);
+            TsoaRedirectorV2Log.append(this, diagnostic);
+            appliedGameBloomEnabled = bloom;
+        }
+        boolean fxaa = tsoaOptions.isGameFxaaEnabled();
+        boolean fsr = tsoaOptions.isGameFsrEnabled();
+        int sharpness = tsoaOptions.getGameSharpeningStrength();
+        String spatialOptions = fxaa + ":" + fsr + ":" + sharpness;
+        if (!spatialOptions.equals(appliedGameSpatialOptions)) {
+            xServerView.getRenderer().effectComposer.configureSpatialFilters(fxaa, fsr, sharpness);
+            appliedGameSpatialOptions = spatialOptions;
+        }
     }
 
     private void setupUI() {

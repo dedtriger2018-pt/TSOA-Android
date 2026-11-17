@@ -1,11 +1,15 @@
 package com.winlator.renderer;
 
+import android.opengl.EGL14;
+import android.opengl.EGLContext;
 import android.opengl.GLES20;
 import android.util.Log;
 
 import com.winlator.core.TsoaRedirectorV2Log;
 import com.winlator.renderer.effects.ColorEffect;
 import com.winlator.renderer.effects.Effect;
+import com.winlator.renderer.effects.FXAAEffect;
+import com.winlator.renderer.effects.SharpeningEffect;
 import com.winlator.renderer.material.ScreenMaterial;
 
 import java.util.ArrayList;
@@ -20,6 +24,45 @@ public class EffectComposer {
     private ColorEffect lastLoggedColorEffect;
     private float lastLoggedHdrStrength = Float.NaN;
     private int lastLoggedColorProgram = -1;
+    private boolean lastLoggedBloom;
+    private SoftBloom softBloom;
+    private boolean bloomReleaseRequested;
+
+    private boolean gameFxaa, gameFsr;
+    private int gameSharpness;
+    private SpatialUpscaler upscaler;
+    private FXAAEffect automaticFxaa;
+    private SharpeningEffect cas, rcas;
+    private final ArrayList<Effect> frameEffects = new ArrayList<>();
+    private EGLContext bufferContext;
+    private int bufferWidth, bufferHeight;
+    private boolean loggedFxaa, loggedFsr, loggedFsrActive;
+    private int loggedSharpness = -1, loggedOutputWidth, loggedOutputHeight, loggedInputWidth, loggedInputHeight;
+
+    /** Preferences are applied independently of HDR/manual color controls. */
+    public synchronized void configureSpatialFilters(boolean fxaa, boolean fsr, int sharpness) {
+        gameFxaa = fxaa;
+        gameFsr = fsr;
+        gameSharpness = Math.max(0, Math.min(100, sharpness));
+        renderer.xServerView.requestRender();
+        renderer.xServerView.queueEvent(this::releaseUnusedSpatialResources);
+    }
+
+    private void releaseUnusedSpatialResources() {
+        synchronized (this) {
+            EGLContext current = EGL14.eglGetCurrentContext();
+            if (current.equals(EGL14.EGL_NO_CONTEXT)) return;
+            if (!current.equals(bufferContext)) {
+                automaticFxaa = null;
+                cas = rcas = null;
+                copyMaterial = null;
+            }
+            if ((!gameFsr || !canUseFsr()) && upscaler != null) { upscaler.release(); upscaler = null; }
+            if (!gameFxaa && automaticFxaa != null) { automaticFxaa.getMaterial().destroy(); automaticFxaa = null; }
+            if (gameSharpness == 0 && cas != null) { cas.getMaterial().destroy(); cas = null; }
+            if (!gameFsr && rcas != null) { rcas.getMaterial().destroy(); rcas = null; }
+        }
+    }
 
     public EffectComposer(GLRenderer renderer) {
         this.renderer = renderer;
@@ -32,6 +75,7 @@ public class EffectComposer {
 
     public synchronized void removeEffect(Effect effect) {
         effects.remove(effect);
+        releaseBloomResources();
         renderer.xServerView.requestRender();
     }
 
@@ -43,7 +87,42 @@ public class EffectComposer {
     }
 
     public synchronized boolean hasEffects() {
-        return !effects.isEmpty();
+        releasePendingBloomResources();
+        releaseUnusedSpatialResources();
+        return gameFxaa || (gameFsr && canUseFsr()) || gameSharpness > 0 || !effects.isEmpty();
+    }
+
+    /** Schedule resource destruction while the game surface's EGL context is current. */
+    public synchronized void releaseBloomResources() {
+        bloomReleaseRequested = true;
+        renderer.xServerView.queueEvent(() -> {
+            synchronized (EffectComposer.this) {
+                releasePendingBloomResources();
+            }
+        });
+        renderer.xServerView.requestRender();
+    }
+
+    private void releasePendingBloomResources() {
+        if (!bloomReleaseRequested) return;
+        ColorEffect color = getEffect(ColorEffect.class);
+        if (color != null && color.isBloomEnabled()) {
+            bloomReleaseRequested = false;
+        } else if (softBloom == null) {
+            bloomReleaseRequested = false;
+        } else if (!EGL14.eglGetCurrentContext().equals(EGL14.EGL_NO_CONTEXT)) {
+            softBloom.release();
+            softBloom = null;
+            bloomReleaseRequested = false;
+        }
+        // A queued event may run before EGL resume. hasEffects() retries at the
+        // next actual draw even if there are no post-processing effects left.
+    }
+
+    private boolean canUseFsr() {
+        int outWidth = renderer.isFullscreen() ? renderer.surfaceWidth : renderer.viewTransformation.viewWidth;
+        int outHeight = renderer.isFullscreen() ? renderer.surfaceHeight : renderer.viewTransformation.viewHeight;
+        return SpatialUpscaler.canUpscale(renderer.getGameWidth(), renderer.getGameHeight(), outWidth, outHeight);
     }
 
     private void swapBuffers() {
@@ -53,6 +132,16 @@ public class EffectComposer {
     }
 
     private void renderEffect(Effect effect) {
+        int bloomTexture = 0;
+        if (effect instanceof ColorEffect) {
+            ColorEffect color = (ColorEffect)effect;
+            if (color.isBloomEnabled()) {
+                if (softBloom == null) softBloom = new SoftBloom();
+                bloomTexture = softBloom.render(renderer, readBuffer.getTextureId(),
+                        renderer.surfaceWidth, renderer.surfaceHeight);
+            }
+            color.setBloomTextureAvailable(bloomTexture != 0);
+        }
         ScreenMaterial material = effect.getMaterial();
         material.use();
         renderer.quadVertices.bind(material.programId);
@@ -60,21 +149,34 @@ public class EffectComposer {
         material.setUniformVec2(material.uniforms.resolution, renderer.surfaceWidth, renderer.surfaceHeight);
 
 
+        if (bloomTexture != 0) {
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, bloomTexture);
+        }
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, readBuffer.getTextureId());
         material.setUniformInt(material.uniforms.screenTexture, 0);
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, renderer.quadVertices.count());
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+        if (bloomTexture != 0) {
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        }
 
         if (effect instanceof ColorEffect) {
             ColorEffect color = (ColorEffect)effect;
             float strength = color.getHdrStrength();
             if (color != lastLoggedColorEffect || strength != lastLoggedHdrStrength ||
-                    material.programId != lastLoggedColorProgram) {
+                    material.programId != lastLoggedColorProgram || color.isBloomEnabled() != lastLoggedBloom) {
                 lastLoggedColorEffect = color;
                 lastLoggedHdrStrength = strength;
                 lastLoggedColorProgram = material.programId;
+                lastLoggedBloom = color.isBloomEnabled();
                 final String diagnostic = "Game color pass drawn: hdrStrength=" + strength
+                        + " bloom=" + color.isBloomEnabled()
+                        + " bloomTexture=" + bloomTexture
+                        + " bloomSize=" + (softBloom != null ? softBloom.getWidth() + "x" + softBloom.getHeight() : "0x0")
                         + " program=" + material.programId
                         + " surface=" + renderer.surfaceWidth + "x" + renderer.surfaceHeight
                         + " sourceFboStatus=0x" + Integer.toHexString(sourceFramebufferStatus)
@@ -88,11 +190,25 @@ public class EffectComposer {
     }
 
     private void initBuffers() {
+        EGLContext current = EGL14.eglGetCurrentContext();
+        boolean sameContext = current.equals(bufferContext);
+        if (!sameContext || bufferWidth != renderer.surfaceWidth || bufferHeight != renderer.surfaceHeight) {
+            if (sameContext) {
+                if (readBuffer != null) readBuffer.destroy();
+                if (writeBuffer != null) writeBuffer.destroy();
+            }
+            readBuffer = writeBuffer = null;
+            bufferContext = current;
+            bufferWidth = renderer.surfaceWidth;
+            bufferHeight = renderer.surfaceHeight;
+            sourceFramebufferChecked = false;
+            // These automatic programs and uniform locations also belong to the old context.
+            if (!sameContext) { automaticFxaa = null; cas = rcas = null; copyMaterial = null; }
+        }
         if (readBuffer == null) {
             readBuffer = new RenderTarget();
             readBuffer.allocateFramebuffer(renderer.surfaceWidth, renderer.surfaceHeight);
         }
-
         if (writeBuffer == null) {
             writeBuffer = new RenderTarget();
             writeBuffer.allocateFramebuffer(renderer.surfaceWidth, renderer.surfaceHeight);
@@ -101,24 +217,87 @@ public class EffectComposer {
 
     public synchronized void render() {
         initBuffers();
-
-        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, hasEffects() ? readBuffer.getFramebuffer() : 0);
+        boolean fsrActive = false;
+        int outWidth = renderer.isFullscreen() ? renderer.surfaceWidth : renderer.viewTransformation.viewWidth;
+        int outHeight = renderer.isFullscreen() ? renderer.surfaceHeight : renderer.viewTransformation.viewHeight;
+        int outX = renderer.isFullscreen() ? 0 : renderer.viewTransformation.viewOffsetX;
+        int outY = renderer.isFullscreen() ? 0 : renderer.viewTransformation.viewOffsetY;
+        if (gameFsr && SpatialUpscaler.canUpscale(renderer.getGameWidth(), renderer.getGameHeight(), outWidth, outHeight)) {
+            if (upscaler == null) upscaler = new SpatialUpscaler();
+            fsrActive = upscaler.render(renderer, readBuffer, outX, outY, outWidth, outHeight);
+        }
+        if (!fsrActive) {
+            // Keep a failed eligible capture until resize/toggle/context change;
+            // repeatedly reallocating a failed FBO would stall every game frame.
+            if ((!gameFsr || !canUseFsr()) && upscaler != null) { upscaler.release(); upscaler = null; }
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, readBuffer.getFramebuffer());
+            renderer.viewportNeedsUpdate = true;
+            renderer.drawFrame();
+        }
         if (!sourceFramebufferChecked) {
             sourceFramebufferStatus = GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER);
             sourceFramebufferChecked = true;
         }
-        renderer.drawFrame();
-
-        for (Effect effect : effects) {
-            boolean renderToScreen = effect == effects.get(effects.size()-1);
-
-            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, !renderToScreen ? writeBuffer.getFramebuffer() : 0);
+        frameEffects.clear();
+        if (gameFxaa && getEffect(FXAAEffect.class) == null) {
+            if (automaticFxaa == null) automaticFxaa = new FXAAEffect() {
+                @Override public ScreenMaterial createMaterial() {
+                    return new ScreenMaterial() {
+                        @Override protected String getFragmentShader() { return SpatialShaders.getFxaaFragmentShader(); }
+                    };
+                }
+            };
+            frameEffects.add(automaticFxaa);
+        }
+        if (fsrActive) {
+            if (rcas == null) rcas = new SharpeningEffect(true);
+            rcas.setStrength(gameSharpness == 0 ? 0.25f : gameSharpness / 100.0f);
+            frameEffects.add(rcas);
+        } else if (gameSharpness > 0) {
+            if (cas == null) cas = new SharpeningEffect(false);
+            cas.setStrength(gameSharpness / 100.0f);
+            frameEffects.add(cas);
+        }
+        frameEffects.addAll(effects);
+        // FSR requested at native resolution: preserve normal output, with no false upscale.
+        if (frameEffects.isEmpty()) {
+            if (copyMaterial == null) copyMaterial = new ScreenMaterial();
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+            GLES20.glViewport(0, 0, renderer.surfaceWidth, renderer.surfaceHeight);
+            drawCopy();
+        }
+        for (int i = 0; i < frameEffects.size(); i++) {
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, i + 1 < frameEffects.size() ? writeBuffer.getFramebuffer() : 0);
             GLES20.glViewport(0, 0, renderer.surfaceWidth, renderer.surfaceHeight);
             renderer.viewportNeedsUpdate = true;
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
-
-            renderEffect(effect);
+            renderEffect(frameEffects.get(i));
             swapBuffers();
         }
+        if (loggedFxaa != gameFxaa || loggedSharpness != gameSharpness || loggedFsr != gameFsr
+                || loggedFsrActive != fsrActive || loggedOutputWidth != outWidth || loggedOutputHeight != outHeight
+                || loggedInputWidth != renderer.getGameWidth() || loggedInputHeight != renderer.getGameHeight()) {
+            final String spatialDiagnostic = "Game spatial pass: fxaa=" + gameFxaa + " sharpness=" + gameSharpness
+                    + " fsrRequested=" + gameFsr + " fsrActive=" + fsrActive
+                    + " input=" + renderer.getGameWidth() + "x" + renderer.getGameHeight()
+                    + " output=" + outWidth + "x" + outHeight;
+            loggedFxaa = gameFxaa; loggedSharpness = gameSharpness; loggedFsr = gameFsr;
+            loggedFsrActive = fsrActive; loggedOutputWidth = outWidth; loggedOutputHeight = outHeight;
+            loggedInputWidth = renderer.getGameWidth(); loggedInputHeight = renderer.getGameHeight();
+            Log.i("TSOA_FE_DIAG", spatialDiagnostic);
+            renderer.xServerView.post(() -> TsoaRedirectorV2Log.append(renderer.xServerView.getContext(), spatialDiagnostic));
+        }
+    }
+
+    private ScreenMaterial copyMaterial;
+    private void drawCopy() {
+        copyMaterial.use();
+        renderer.quadVertices.bind(copyMaterial.programId);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, readBuffer.getTextureId());
+        copyMaterial.setUniformInt(copyMaterial.uniforms.screenTexture, 0);
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, renderer.quadVertices.count());
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+        renderer.viewportNeedsUpdate = true;
     }
 }
