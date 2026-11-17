@@ -131,6 +131,8 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
             TsoaRuntimeConfig.apply(context, rootFS, envVars);
             TsoaRedirectorV2Log.append(context, "Runtime configured: DISPLAY=" + envVars.get("DISPLAY")
                     + " VK_DRIVER_FILES=" + envVars.get("VK_DRIVER_FILES")
+                    + " ALSA_CONFIG_PATH=" + envVars.get("ALSA_CONFIG_PATH")
+                    + " ALSA_PLUGIN_DIR=" + envVars.get("ALSA_PLUGIN_DIR")
                     + " WINEESYNC=" + envVars.get("WINEESYNC"));
             File redirectorLibrary = TsoaRedirectorV2.install(context);
             String wineDir = rootFS.getWinePath();

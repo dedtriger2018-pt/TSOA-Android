@@ -4,18 +4,23 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.res.AssetFileDescriptor;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
-import android.media.MediaPlayer;
+import android.media.AudioFormat;
+import android.media.AudioTrack;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.util.Log;
 
-/** A quiet, pre-rendered rain/wind loop owned only by the visible launcher. */
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+/** Field-recorded stereo rain in one static PCM buffer, looped by Android without a player restart. */
 public final class TsoaAmbience implements AutoCloseable {
     private static final String ASSET = "tsoa_lobby_rain.wav";
     private static final String TAG = "TSOA_FE_DIAG";
@@ -23,8 +28,13 @@ public final class TsoaAmbience implements AutoCloseable {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final AudioManager audioManager;
     private final AudioFocusRequest focusRequest;
-    private MediaPlayer player;
-    private boolean prepared;
+    private final ExecutorService loader = Executors.newSingleThreadExecutor(task -> {
+        Thread thread = new Thread(task, "TSOA-lobby-audio");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private AudioTrack track;
+    private boolean preparing;
     private boolean active;
     private boolean enabled = true;
     private boolean closed;
@@ -44,7 +54,7 @@ public final class TsoaAmbience implements AutoCloseable {
 
     private final Runnable fade = new Runnable() {
         @Override public void run() {
-            if (!canPlay() || player == null || !prepared || !hasFocus) return;
+            if (!canPlay() || track == null || !hasFocus) return;
             float amount = Math.min(1f, (SystemClock.uptimeMillis() - fadeStart) / (float)fadeDuration);
             // Smoothstep keeps the initial fade from sounding like an abrupt switch.
             amount = amount * amount * (3f - 2f * amount);
@@ -117,43 +127,67 @@ public final class TsoaAmbience implements AutoCloseable {
             pauseNow(true);
             return;
         }
-        if (player == null) {
-            preparePlayer();
+        if (track == null) {
+            if (!preparing) prepareTrack();
             return;
         }
-        if (!prepared || !requestFocus()) return;
+        if (!requestFocus()) return;
         try {
-            boolean starting = !player.isPlaying();
+            boolean starting = track.getPlayState() != AudioTrack.PLAYSTATE_PLAYING;
             if (starting) {
                 setGain(0f);
-                player.start();
+                track.play();
             }
             fadeTo(volume * (ducked ? 0.2f : 1f), starting ? 900L : 180L);
         }
         catch (IllegalStateException error) { fail("Falha ao iniciar o som do lobby.", error); }
     }
 
-    private void preparePlayer() {
-        try (AssetFileDescriptor source = context.getAssets().openFd(ASSET)) {
-            MediaPlayer next = new MediaPlayer();
-            player = next;
-            prepared = false;
-            next.setAudioAttributes(attributes());
-            next.setDataSource(source.getFileDescriptor(), source.getStartOffset(), source.getLength());
-            next.setLooping(true);
-            next.setVolume(0f, 0f);
-            next.setOnPreparedListener(ready -> {
-                if (closed || player != ready) return;
-                prepared = true;
-                updatePlayback();
-            });
-            next.setOnErrorListener((failed, what, extra) -> {
-                if (player == failed) fail("Som do lobby indisponível: " + what + "/" + extra, null);
-                return true;
-            });
-            next.prepareAsync();
-        }
-        catch (Exception error) { fail("Não foi possível preparar o som do lobby.", error); }
+    private void prepareTrack() {
+        preparing = true;
+        // Reading the small stereo asset and filling native static memory never blocks the UI thread.
+        loader.execute(() -> {
+            AudioTrack loaded = null;
+            try (InputStream input = context.getAssets().open(ASSET)) {
+                TsoaPcmLoop loop = TsoaPcmLoop.read(input);
+                loaded = new AudioTrack.Builder()
+                        .setAudioAttributes(attributes())
+                        .setAudioFormat(new AudioFormat.Builder()
+                                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                                .setSampleRate(loop.sampleRate)
+                                .setChannelMask(loop.channels == 2 ? AudioFormat.CHANNEL_OUT_STEREO : AudioFormat.CHANNEL_OUT_MONO)
+                                .build())
+                        .setTransferMode(AudioTrack.MODE_STATIC)
+                        .setBufferSizeInBytes(loop.pcm.length)
+                        .build();
+                int written = loaded.write(loop.pcm, 0, loop.pcm.length);
+                if (written != loop.pcm.length || loaded.getState() != AudioTrack.STATE_INITIALIZED)
+                    throw new IOException("Incomplete static PCM buffer: " + written);
+                // AudioTrack takes frame counts, not samples or bytes. -1 loops indefinitely.
+                if (loaded.setLoopPoints(0, loop.frameCount, -1) != AudioTrack.SUCCESS)
+                    throw new IOException("Android rejected the PCM loop points.");
+                loaded.setVolume(0f);
+                final AudioTrack ready = loaded;
+                handler.post(() -> {
+                    preparing = false;
+                    if (closed) {
+                        ready.release();
+                        return;
+                    }
+                    track = ready;
+                    Log.i(TAG, "Lobby rain PCM ready: " + loop.sampleRate + " Hz, channels=" +
+                            loop.channels + ", frames=" + loop.frameCount + ", loops=infinite");
+                    updatePlayback();
+                });
+            }
+            catch (Exception error) {
+                if (loaded != null) loaded.release();
+                handler.post(() -> {
+                    preparing = false;
+                    if (!closed) fail("Não foi possível preparar o loop de chuva.", error);
+                });
+            }
+        });
     }
 
     private boolean requestFocus() {
@@ -203,15 +237,15 @@ public final class TsoaAmbience implements AutoCloseable {
 
     private void setGain(float gain) {
         currentGain = Math.max(0f, Math.min(1f, gain));
-        if (player != null) player.setVolume(currentGain, currentGain);
+        if (track != null) track.setVolume(currentGain);
     }
 
     private void pauseNow(boolean abandon) {
         handler.removeCallbacks(fade);
-        if (player != null && prepared) {
+        if (track != null) {
             try {
                 setGain(0f);
-                if (player.isPlaying()) player.pause();
+                if (track.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) track.pause();
             }
             catch (IllegalStateException ignored) {}
         }
@@ -228,11 +262,10 @@ public final class TsoaAmbience implements AutoCloseable {
 
     private void fail(String message, Exception error) {
         playbackFailed = true;
-        prepared = false;
         pauseNow(true);
-        if (player != null) {
-            player.release();
-            player = null;
+        if (track != null) {
+            track.release();
+            track = null;
         }
         Log.w(TAG, message, error);
     }
@@ -242,11 +275,11 @@ public final class TsoaAmbience implements AutoCloseable {
             if (closed) return;
             closed = true;
             pauseNow(true);
-            if (player != null) {
-                player.release();
-                player = null;
+            if (track != null) {
+                track.release();
+                track = null;
             }
-            prepared = false;
+            loader.shutdown();
             if (receiverRegistered) {
                 context.unregisterReceiver(becomingNoisy);
                 receiverRegistered = false;

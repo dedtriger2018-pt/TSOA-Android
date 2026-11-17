@@ -1,6 +1,6 @@
 # Lobby de chuva
 
-The dedicated launcher follows the approved storm-sky reference: centered text over dark clouds, mist and wet pavement. Separate portrait and landscape artwork contains no baked-in text or buttons. Native Canvas layers add automatic rain, drifting mist, puddle ripples and faint text reflections at approximately 30 FPS. They pause when the launcher loses visibility or opens the game. Reduced motion keeps a static scene.
+The dedicated launcher follows the approved storm-sky reference: centered text over dark clouds, mist and wet pavement. Separate portrait and landscape artwork contains no baked-in text or buttons. Native Canvas layers add automatic rain, drifting mist, puddle ripples and faint text reflections at approximately 30 FPS. Touching the ground adds pooled waves and a small distortion of its reflections; dragging the sky moves the cloud layers slightly. The low-resolution floor mesh runs only while a touch wave is active, with at most six waves at once. They pause when the launcher loses visibility or opens the game. Reduced motion keeps a static scene.
 
 The centered title and text-only buttons adapt to portrait/landscape without the earlier city artwork or orbit HUD. Every button has at least a 48 dp touch target. About opens the game's Steam page directly: https://store.steampowered.com/app/1672670/.
 
@@ -9,6 +9,7 @@ The centered title and text-only buttons adapt to portrait/landscape without the
 `com.winlator.tsoa.TsoaOptions` stores launcher preferences in `naninovel_launcher`, separate from runtime compatibility preferences. Video, input and audio settings apply on the next game launch; ambience settings update immediately.
 
 - Resolution, preserved/stretched aspect, Android system bars and a DXVK frame limit.
+- Optional game-only SDR color presets labeled HDR simulado (off by default, Suave or Marcante). These reuse the existing Winlator brightness/contrast/gamma effect in one pass. They do not enable HDR output or change the lobby. Manual in-game filters remain usable.
 - Optional controls: hidden, one ESC button, the existing RTS layout or a custom profile. The existing editor supports key mapping, movement, resizing and element opacity. Creating a custom layout duplicates ESC instead of editing the minimal layout. Reset preserves custom profiles and keeps a copy of the prior ESC layout.
 - Cursor sensitivity, tap-to-click and long-press right click. The existing two-finger right click remains available.
 - Session audio gain/mute through ALSA/PulseAudio. This does not fix FMOD/device compatibility or change the phone's global volume.
@@ -18,7 +19,9 @@ The centered title and text-only buttons adapt to portrait/landscape without the
 
 ## Ambient audio
 
-`assets/tsoa_lobby_rain.wav` is an original synthesized 20-second, 24 kHz, 16-bit mono loop. It mixes filtered noise and damped water-like grains, with no music or external recording. `tools/generate_tsoa_ambience.py` reproduces and checks it with host NumPy; NumPy is not an Android or build dependency. The asset is checked for clipping, RMS/peak bounds and a zero-step loop boundary. MediaPlayer opens the uncompressed WAV asset, manages audio focus and fades from silence at 18% gain by default. The renderer and sound do not run behind the game.
+`assets/tsoa_lobby_rain.wav` is a 30-second, 24 kHz, 16-bit stereo excerpt of a real rain recording by kvgarlic, released under CC0. Four seconds of overlap create a continuous loop; the original stereo field is preserved. Source, license, preparation steps and integrity metrics are documented in [TSOA_RAIN_AUDIO.md](TSOA_RAIN_AUDIO.md) and its JSON companion.
+
+`AudioTrack.MODE_STATIC` holds one PCM buffer of 2,880,000 bytes. Its infinite loop points use audio frames, rather than restarting a player after completion. Loading and PCM validation happen on a worker, the sound fades in at 18% gain by default, and pauses immediately before the game or on leaving the foreground. The file reader rejects malformed/oversized WAVs. `tools/generate_tsoa_ambience.py --check` validates the shipped asset with Python's standard library; preparing it again requires the verified source recording, host FFmpeg and NumPy. These tools are not Android dependencies.
 
 ## Saves and diagnostics
 
@@ -34,12 +37,18 @@ Diagnostics export the last 4 MB of available Redirector/Unity logs and device/a
 
 The `Iniciando` and `Instalando Arquivos do Sistema` overlays are Android dialogs, not loading PNGs. Their window alpha and dim amount are zero only in the dedicated launcher/game. Their progress state, touch blocking, extraction, dismissal and callbacks remain intact. Legacy editor dialogs keep normal visibility. Explicit game-folder import progress and actual error messages remain visible in the lobby.
 
+## Game audio configuration
+
+Earlier device logs show native libasound looking for the old package's `usr/share/alsa/alsa.conf`, then reporting `Unknown PCM default`; FMOD subsequently reports that no audio device initialized. The packaged top-level ALSA configuration itself includes an absolute `com.winlator` path, so selecting that file under the current root is insufficient.
+
+When the Android ALSA server is present, `TsoaAudioConfig` selects the complete packaged `etc/alsa/conf.d/android_aserver.conf` through `ALSA_CONFIG_PATH` and its current `usr/lib/alsa-lib` through `ALSA_PLUGIN_DIR`. The server socket, audio driver, shared-memory policy, libraries and Wine/Box64 settings are preserved. Missing optional files produce a warning without blocking the game. The selected paths are included in the Redirector launch log for device diagnostics. Native libasound configuration resolution and the runtime helper tests cover the path selection; audible FMOD playback still requires a device test.
+
 ## Runtime compatibility
 
-The working Honor Android 13 setup from `226e818` is preserved: pinned patchelf 0.19.3, the exact verified Box64 binary, Redirector V2/preload behavior, esync setting, display socket and Turnip paths. This UI change does not replace native libraries or reset compatibility preferences.
+The working Honor Android 13 setup from `226e818` is preserved: pinned patchelf 0.19.3, the exact verified Box64 binary, Redirector V2/preload behavior, esync setting, display socket and Turnip paths. This patch does not replace native libraries or reset compatibility preferences; it additionally selects the current package paths for the existing ALSA bridge.
 
 ## Validation
 
-Run `python3 tools/tests/test_tsoa_save_archive.py` with a full JDK 17+. The test exercises real files, save round trips, preservation of the old saves, new installations and malformed/unsafe/oversized ZIP rejection. GitHub Actions runs it before the normal Android APK build, alongside the existing runtime checks.
+Run `python3 tools/tests/test_tsoa_save_archive.py` with a full JDK 17+. The audio asset and bounded PCM loader are checked with `python3 tools/generate_tsoa_ambience.py --check` and `python3 tools/tests/test_tsoa_pcm_loop.py`. The existing runtime helper harness now also covers ALSA path selection and its nonfatal fallback. The test exercises real files, save round trips, preservation of the old saves, new installations and malformed/unsafe/oversized ZIP rejection. GitHub Actions runs it before the normal Android APK build, alongside the existing runtime checks.
 
-On the device, verify portrait/landscape, return from the editor/Steam/game, animation and sound suspension, ambience volume/mute and audio focus/headphone changes, ESC and RTS, save export/restore, game audio controls and auto-launch cancellation. A Java compile alone does not verify rendering or gameplay on the Honor.
+On the device, verify portrait/landscape, touch waves and cloud dragging, return from the editor/Steam/game, animation and sound suspension, several full audio loop cycles, ambience volume/mute and audio focus/headphone changes, optional game-only HDR presets, ESC and RTS, save export/restore, game audio controls and auto-launch cancellation. A Java compile alone does not verify rendering or gameplay on the Honor.

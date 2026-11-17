@@ -58,6 +58,17 @@ public final class TsoaRuntimeConfig {
         envVars.put("WINEESYNC", "0");
         envVars.put("VK_DRIVER_FILES", destination.getAbsolutePath());
 
+        if (!envVars.get("ANDROID_ALSA_SERVER").isEmpty()) {
+            boolean audioConfigured = TsoaAudioConfig.apply(rootDir, envVars);
+            if (audioConfigured) {
+                Log.i(TAG, "TSOA ALSA configured: ALSA_CONFIG_PATH=" + envVars.get("ALSA_CONFIG_PATH")
+                        + " ALSA_PLUGIN_DIR=" + envVars.get("ALSA_PLUGIN_DIR"));
+            }
+            else {
+                Log.w(TAG, "TSOA ALSA configuration or bridge plugin missing; continuing without relocation");
+            }
+        }
+
         Log.i(TAG, "TSOA runtime configured: DISPLAY=" + display
                 + " VK_DRIVER_FILES=" + destination.getAbsolutePath());
     }

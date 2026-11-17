@@ -58,6 +58,11 @@ jobs:
       - name: Validate TSOA save backups
         run: python3 tools/tests/test_tsoa_save_archive.py
 
+      - name: Validate TSOA rain audio
+        run: |
+          python3 tools/generate_tsoa_ambience.py --check
+          python3 tools/tests/test_tsoa_pcm_loop.py
+
       - name: Build debug APK
         run: |
           chmod +x ./gradlew

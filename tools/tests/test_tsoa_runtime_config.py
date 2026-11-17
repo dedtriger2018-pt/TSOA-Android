@@ -31,6 +31,7 @@ public class Context {
 package android.util;
 public class Log {
     public static int i(String tag, String message) { return 0; }
+    public static int w(String tag, String message) { return 0; }
 }
 """,
     "androidx/annotation/NonNull.java": """
@@ -52,6 +53,7 @@ HARNESS = r"""
 import android.content.Context;
 import com.winlator.core.EnvVars;
 import com.winlator.core.TsoaRuntimeConfig;
+import com.winlator.core.TsoaAudioConfig;
 import com.winlator.xenvironment.RootFS;
 import org.json.JSONObject;
 import java.io.IOException;
@@ -110,16 +112,30 @@ public class RuntimeConfigCheck {
         Path driver = rootPath.resolve("lib/libvulkan_freedreno.so");
         Path fallback = rootPath.resolve("usr/lib/libvulkan_freedreno.so");
         Path rc = rootPath.resolve("home/xuser/.box64rc");
+        Path alsaConfig = rootPath.resolve("etc/alsa/conf.d/android_aserver.conf");
+        Path alsaMain = rootPath.resolve("usr/share/alsa/alsa.conf");
+        Path alsaPlugins = rootPath.resolve("usr/lib/alsa-lib");
+        Path alsaBridge = alsaPlugins.resolve("libasound_module_pcm_android_aserver.so");
         Path destination = files.resolve("tsoa_redirector_v2/freedreno_icd.json");
         write(source, SOURCE);
         write(driver, "driver fixture");
         write(rc, "[*]\nBOX64_ENV4=custom-user-setting\n");
+        write(alsaConfig, "pcm.!default { type android_aserver }\n");
+        write(alsaMain, "@hooks [{ func load files [\"/data/data/com.winlator/files/rootfs/etc/alsa/conf.d/android_aserver.conf\"] errors false }]\n");
+        write(alsaBridge, "bridge plugin fixture");
+        byte[] alsaConfigBefore = Files.readAllBytes(alsaConfig);
+        byte[] alsaMainBefore = Files.readAllBytes(alsaMain);
         byte[] sourceBefore = Files.readAllBytes(source);
         byte[] rcBefore = Files.readAllBytes(rc);
         EnvVars env = new EnvVars();
         env.put("WINEDEBUG", "user-setting");
         env.put("DISPLAY", ":0");
         env.put("WINEESYNC", "1");
+        env.put("BOX64_ENV5", "WINEESYNC=0");
+        env.put("ANDROID_ALSA_SERVER", rootPath.resolve("tmp/.alsa").toString());
+        env.put("ANDROID_ASERVER_USE_SHM", "false");
+        env.put("ALSA_CONFIG_PATH", "/data/data/com.winlator/files/rootfs/usr/share/alsa/alsa.conf");
+        env.put("ALSA_PLUGIN_DIR", "/data/data/com.winlator/files/rootfs/usr/lib/alsa-lib");
         TsoaRuntimeConfig.apply(context, root, env);
         JSONObject output = readJson(destination);
         require(output.getJSONObject("ICD").getString("library_path").equals(driver.toString()),
@@ -140,14 +156,47 @@ public class RuntimeConfigCheck {
         require(env.get("WINEDEBUG").equals("user-setting"), "User diagnostics were overwritten");
         require(!env.has("VK_LOADER_DEBUG") && !env.has("DXVK_LOG_LEVEL"),
                 "Verbose diagnostics are mandatory");
+        require(env.get("ALSA_CONFIG_PATH").equals(alsaConfig.toString()),
+                "ALSA still uses the top-level config with its obsolete absolute include");
+        require(env.get("ALSA_PLUGIN_DIR").equals(alsaPlugins.toString()),
+                "ALSA plugin lookup still uses the old package");
+        require(env.get("BOX64_ENV5").equals("WINEESYNC=0"), "Audio replaced a Box64 environment slot");
+        require(env.get("ANDROID_ALSA_SERVER").equals(rootPath.resolve("tmp/.alsa").toString()),
+                "Audio relocation changed the running bridge server socket");
+        require(env.get("ANDROID_ASERVER_USE_SHM").equals("false"), "Audio changed shared-memory policy");
+        require(Arrays.equals(alsaConfigBefore, Files.readAllBytes(alsaConfig)), "Bridge configuration was modified");
+        require(Arrays.equals(alsaMainBefore, Files.readAllBytes(alsaMain)), "Packaged ALSA main config was modified");
         noTemporaryFiles(destination.getParent());
-        System.out.println("PASS: relocation, metadata, user RC and environment preservation");
+        System.out.println("PASS: relocation, ALSA bridge paths, metadata, user RC and environment preservation");
 
         TsoaRuntimeConfig.apply(context, root, env);
         require(readJson(destination).getJSONObject("ICD").getString("library_path")
                 .equals(driver.toString()), "Repeated apply failed");
         noTemporaryFiles(destination.getParent());
         System.out.println("PASS: repeated atomic replacement");
+
+        EnvVars pulse = new EnvVars();
+        pulse.put("PULSE_SERVER", "explicit-user-server");
+        String pulseBefore = pulse.toString();
+        require(!TsoaAudioConfig.apply(rootPath.toFile(), pulse), "ALSA settings leaked into a non-ALSA session");
+        require(pulseBefore.equals(pulse.toString()), "Non-ALSA environment changed");
+        EnvVars incompleteAudio = new EnvVars();
+        incompleteAudio.put("ANDROID_ALSA_SERVER", "running-server");
+        incompleteAudio.put("ALSA_CONFIG_PATH", "custom-before-failed-selection");
+        incompleteAudio.put("BOX64_ENV5", "WINEESYNC=0");
+        String incompleteBefore = incompleteAudio.toString();
+        Files.delete(alsaBridge);
+        require(!TsoaAudioConfig.apply(rootPath.toFile(), incompleteAudio), "Missing audio plugin was accepted");
+        require(incompleteBefore.equals(incompleteAudio.toString()), "Missing plugin partially changed audio environment");
+        // Missing optional audio assets must not turn a working game into a startup failure.
+        TsoaRuntimeConfig.apply(context, root, env);
+        write(alsaBridge, "bridge plugin fixture");
+        Files.delete(alsaConfig);
+        require(!TsoaAudioConfig.apply(rootPath.toFile(), incompleteAudio), "Missing audio config was accepted");
+        require(incompleteBefore.equals(incompleteAudio.toString()), "Missing config partially changed audio environment");
+        TsoaRuntimeConfig.apply(context, root, env);
+        write(alsaConfig, new String(alsaConfigBefore, StandardCharsets.UTF_8));
+        System.out.println("PASS: non-ALSA sessions preserved; missing optional config/plugin keep startup usable");
 
         Files.delete(driver);
         write(fallback, "fallback driver fixture");
@@ -194,7 +243,7 @@ def main():
             target.write_text(text)
         core = sources / "com/winlator/core"
         core.mkdir(parents=True, exist_ok=True)
-        for source in ("EnvVars.java", "TsoaRuntimeConfig.java"):
+        for source in ("EnvVars.java", "TsoaAudioConfig.java", "TsoaRuntimeConfig.java"):
             shutil.copyfile(production / source, core / source)
         (sources / "RuntimeConfigCheck.java").write_text(HARNESS)
         classes.mkdir()

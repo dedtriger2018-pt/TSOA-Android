@@ -1,0 +1,37 @@
+{
+  "title": "Light Rain Distant Thunder July 5th 2016",
+  "author": "kvgarlic",
+  "source_page": "https://commons.wikimedia.org/wiki/File:Light_Rain_Distant_Thunder_July_5th_2016.wav",
+  "original_url": "https://upload.wikimedia.org/wikipedia/commons/b/b6/Light_Rain_Distant_Thunder_July_5th_2016.wav",
+  "original_sha256": "aa85a4aa26b261b8d8d9da52df3cb1c7f09aa86f5253e835ff5e15513e2451cb",
+  "freesound_page": "https://freesound.org/people/kvgarlic/sounds/349454/",
+  "license": "CC0 1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "processing": {
+    "excerpt_start_seconds": 38,
+    "excerpt_seconds": 34,
+    "crossfade_seconds": 4,
+    "crossfade": "equal power",
+    "high_pass_hz": 65,
+    "low_pass_hz": 9000,
+    "transients": "offline gentle tanh limiter",
+    "added_synthesized_audio": false
+  },
+  "output": {
+    "sha256": "20a8b0cab513ac4238edcf8d24123838f4d02479c8cd02266a3cb1af1931255b",
+    "bytes": 2880044,
+    "pcm_bytes": 2880000,
+    "sample_rate": 24000,
+    "channels": 2,
+    "pcm_bits": 16,
+    "frames": 720000,
+    "seconds": 30.0,
+    "rms": 0.08345084,
+    "peak": 0.6199646,
+    "clipped_samples": 0,
+    "seam_step_lsb": [
+      1222,
+      1169
+    ]
+  }
+}

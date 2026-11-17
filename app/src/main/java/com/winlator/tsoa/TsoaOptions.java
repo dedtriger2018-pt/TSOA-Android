@@ -33,6 +33,12 @@ public final class TsoaOptions {
         return value == 30 || value == 60 ? value : 0;
     }
 
+    /** 0 disables the optional game-only SDR color preset; 1/2 select its strength. */
+    public int getGameHdrMode() {
+        int value = preferences.getInt("game_hdr_mode", 0);
+        return value == 1 || value == 2 ? value : 0;
+    }
+
     public String getControlsMode() {
         String mode = preferences.getString("controls_mode", "esc");
         return "off".equals(mode) || "rts".equals(mode) || "custom".equals(mode) ? mode : "esc";

@@ -69,6 +69,7 @@ import com.winlator.math.Mathf;
 import com.winlator.renderer.GLRenderer;
 import com.winlator.services.ForegroundService;
 import com.winlator.tsoa.TsoaOptions;
+import com.winlator.tsoa.TsoaGameColor;
 import com.winlator.tsoa.TsoaGameControls;
 import com.winlator.tsoa.TsoaGameControlsView;
 import com.winlator.tsoa.TsoaGameTouchpadView;
@@ -638,6 +639,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
         xServer.setRenderer(renderer);
         if (dedicatedLauncherMode && "stretch".equals(tsoaOptions.getAspectMode())) renderer.toggleFullscreen();
+        if (dedicatedLauncherMode) TsoaGameColor.apply(renderer, tsoaOptions.getGameHdrMode());
         rootView.addView(xServerView);
 
         globalCursorSpeed = preferences.getFloat("cursor_speed", 1.0f);

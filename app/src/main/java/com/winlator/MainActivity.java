@@ -104,6 +104,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     private EcoBackdropView ecoBackdrop;
     private TsoaMaintenance maintenance;
     private TsoaAmbience ambience;
+    private final int[] backdropScreenPosition = new int[2];
     private int launcherInsetLeft;
     private int launcherInsetTop;
     private int launcherInsetRight;
@@ -365,8 +366,20 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     }
 
     private void setLobbyActive(boolean active) {
+        if (!active && ecoBackdrop != null) ecoBackdrop.onInteraction(0, 0, MotionEvent.ACTION_CANCEL);
         if (ecoBackdrop != null) ecoBackdrop.setActive(active);
         if (ambience != null) ambience.setActive(active);
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        if (dedicatedLauncher && launcherVisible && ecoBackdrop != null) {
+            ecoBackdrop.getLocationOnScreen(backdropScreenPosition);
+            ecoBackdrop.onInteraction(event.getRawX() - backdropScreenPosition[0],
+                event.getRawY() - backdropScreenPosition[1], event.getActionMasked());
+        }
+        // Weather observes touches; Android still dispatches every event to the actual buttons.
+        return super.dispatchTouchEvent(event);
     }
 
     private void setLauncherActionText(CharSequence text) {

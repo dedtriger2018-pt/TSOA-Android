@@ -1,84 +1,85 @@
 #!/usr/bin/env python3
-"""Generate the lobby's original, seamless rain/wind bed (requires host NumPy).
+"""Prepare the original CC0 field recording as a small, seamless stereo PCM loop.
 
-This is synthesized noise and water-like grains, not a recording or a music loop.
-Only the generated PCM WAV ships on Android; NumPy is not an app dependency.
-The frequency-domain layers are exactly periodic, so there is no crossfade dip.
+Generation requires host FFmpeg and NumPy; --check uses only Python's standard
+library. Neither FFmpeg nor NumPy ships in the Android app. No synthetic rain is
+added. The original source is verified before processing.
 """
-
 import argparse
+import array
 import hashlib
 import io
 import json
 from pathlib import Path
+import shutil
+import subprocess
+import sys
+import urllib.request
 import wave
 
-import numpy as np
-
+ROOT = Path(__file__).resolve().parents[1]
+SOURCE_URL = 'https://upload.wikimedia.org/wikipedia/commons/b/b6/Light_Rain_Distant_Thunder_July_5th_2016.wav'
+SOURCE_SHA = 'aa85a4aa26b261b8d8d9da52df3cb1c7f09aa86f5253e835ff5e15513e2451cb'
 RATE = 24000
-SECONDS = 20
-FRAMES = RATE * SECONDS
-SEED = 1672670
+START = 38
+EXCERPT_SECONDS = 34
+CROSSFADE_SECONDS = 4
 
 
-def synthesize():
-    rng = np.random.default_rng(SEED)
-    frequency = np.fft.rfftfreq(FRAMES, 1.0 / RATE)
-    safe_frequency = np.maximum(frequency, 1.0)
-    time = np.arange(FRAMES, dtype=np.float64) / RATE
-
-    def layer(low, high, tilt, rms):
-        noise = rng.standard_normal(FRAMES)
-        # Two smooth corners and a pink tilt keep the rain soft instead of hissy.
-        high_pass = (safe_frequency / low) ** 2 / (1 + (safe_frequency / low) ** 2)
-        low_pass = 1 / np.sqrt(1 + (safe_frequency / high) ** 8)
-        shape = high_pass * low_pass / safe_frequency ** tilt
-        shape[0] = 0
-        signal = np.fft.irfft(np.fft.rfft(noise) * shape, n=FRAMES)
-        return signal * (rms / np.sqrt(np.mean(signal * signal)))
-
-    rain = layer(190, 3400, 0.33, 0.080)
-    wind = layer(32, 390, 0.55, 0.039)
-    air = layer(240, 1250, 0.32, 0.022)
-    # Every modulation contains a whole number of cycles in this 20-second loop.
-    gust = 0.80 + 0.13 * np.sin(2 * np.pi * time / SECONDS + 1.2)
-    gust += 0.07 * np.sin(4 * np.pi * time / SECONDS - 0.7)
-    rainfall = 0.92 + 0.05 * np.sin(6 * np.pi * time / SECONDS + 0.4)
-    signal = rain * rainfall + wind * gust + air * (0.8 + gust * 0.2)
-
-    # Quiet, irregular, damped grains suggest rain meeting the wet pavement.
-    # Wrap each grain so late grains never get cut off at the loop boundary.
-    for _ in range(720):
-        length = int(rng.uniform(0.009, 0.026) * RATE)
-        grain_time = np.arange(length, dtype=np.float64) / RATE
-        tone = rng.uniform(750, 3400)
-        decay = rng.uniform(0.0025, 0.0070)
-        envelope = (1 - np.exp(-grain_time / 0.00065)) * np.exp(-grain_time / decay)
-        grain = np.sin(2 * np.pi * (tone * grain_time - 420 * grain_time * grain_time))
-        grain += rng.standard_normal(length) * 0.32
-        grain *= envelope * rng.uniform(0.012, 0.034)
-        start = int(rng.integers(0, FRAMES))
-        indices = (start + np.arange(length)) % FRAMES
-        signal[indices] += grain
-
-    signal -= np.mean(signal)
-    signal *= 0.108 / np.sqrt(np.mean(signal * signal))
-    peak = float(np.max(np.abs(signal)))
-    if peak > 0.55:
-        signal *= 0.55 / peak
-    pcm = np.rint(signal * 32767).astype('<i2')
-    # Select an adjacent equal quantized pair as the seam. This preserves the
-    # periodic waveform and gives the first/last samples an exact zero step.
-    step = np.abs(np.diff(pcm.astype(np.int32)))
-    seam = int(np.argmin(step)) + 1
-    pcm = np.roll(pcm, -seam)
-    return pcm
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
 
 
-def encode(pcm):
+def inspect(data):
+    with wave.open(io.BytesIO(data), 'rb') as wav:
+        rate, channels, width, frames = wav.getframerate(), wav.getnchannels(), wav.getsampwidth(), wav.getnframes()
+        raw = wav.readframes(frames)
+    if (rate, channels, width, frames) != (RATE, 2, 2, 30 * RATE):
+        raise SystemExit('Unexpected stereo PCM loop format')
+    values = array.array('h', raw)
+    if sys.byteorder != 'little':
+        values.byteswap()
+    peak = max(abs(v) for v in values) / 32768.0
+    rms = (sum(v * v for v in values) / len(values)) ** 0.5 / 32768.0
+    clipped = sum(abs(v) >= 32767 for v in values)
+    if clipped or not 0.05 < rms < 0.13 or peak > 0.621 or len(raw) > 5 * 1024 * 1024:
+        raise SystemExit('PCM exceeds the loudness, clipping or memory budget')
+    return {'sha256': digest(data), 'bytes': len(data), 'pcm_bytes': len(raw),
+            'sample_rate': rate, 'channels': channels, 'pcm_bits': width * 8,
+            'frames': frames, 'seconds': frames / rate, 'rms': round(rms, 8),
+            'peak': round(peak, 8), 'clipped_samples': clipped,
+            'seam_step_lsb': [abs(values[c] - values[-channels + c]) for c in range(channels)]}
+
+
+def prepare(source):
+    import numpy as np
+    if digest(source.read_bytes()) != SOURCE_SHA:
+        raise SystemExit('The source differs from the verified CC0 field recording')
+    if not shutil.which('ffmpeg'):
+        raise SystemExit('Install host FFmpeg before preparing this asset')
+    command = ['ffmpeg', '-v', 'error', '-ss', str(START), '-t', str(EXCERPT_SECONDS),
+               '-i', str(source), '-af', 'highpass=f=65,lowpass=f=9000',
+               '-ac', '2', '-ar', str(RATE), '-f', 'f32le', '-']
+    raw = subprocess.run(command, check=True, capture_output=True).stdout
+    signal = np.frombuffer(raw, dtype='<f4').reshape(-1, 2).astype(np.float64)
+    if len(signal) != EXCERPT_SECONDS * RATE:
+        raise SystemExit('The source excerpt is incomplete')
+    fade = CROSSFADE_SECONDS * RATE
+    # Body [4s,30s) then a 4s equal-power blend from the tail into the head.
+    # At the wrap the next sample is the source sample immediately after the
+    # head of the blend, rather than silence or an audio-player restart.
+    phase = np.arange(fade, dtype=np.float64) * (np.pi * 0.5 / fade)
+    blend = signal[-fade:] * np.cos(phase)[:, None] + signal[:fade] * np.sin(phase)[:, None]
+    loop = np.concatenate((signal[fade:-fade], blend), axis=0)
+    loop -= np.mean(loop, axis=0)
+    gain = 0.09 / np.sqrt(np.mean(loop * loop))
+    # Gentle, offline transient limiting keeps microphone droplets from becoming
+    # harsh at a higher phone volume. Stereo field placement is preserved.
+    loop = 0.62 * np.tanh(loop * gain / 0.62)
+    pcm = np.rint(loop * 32767).astype('<i2')
     output = io.BytesIO()
     with wave.open(output, 'wb') as wav:
-        wav.setnchannels(1)
+        wav.setnchannels(2)
         wav.setsampwidth(2)
         wav.setframerate(RATE)
         wav.writeframes(pcm.tobytes())
@@ -87,30 +88,42 @@ def encode(pcm):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    default = Path(__file__).resolve().parents[1] / 'app/src/main/assets/tsoa_lobby_rain.wav'
-    parser.add_argument('--output', type=Path, default=default)
-    parser.add_argument('--check', action='store_true', help='Validate the existing asset without writing it')
+    parser.add_argument('--source', type=Path, default=ROOT / 'build/tsoa-rain-source.wav')
+    parser.add_argument('--download-source', action='store_true')
+    parser.add_argument('--output', type=Path, default=ROOT / 'app/src/main/assets/tsoa_lobby_rain.wav')
+    parser.add_argument('--metadata', type=Path, default=ROOT / 'docs/TSOA_RAIN_AUDIO.json')
+    parser.add_argument('--check', action='store_true')
     args = parser.parse_args()
-    pcm = synthesize()
-    content = encode(pcm)
-    normalized = pcm.astype(np.float64) / 32768.0
-    rms = float(np.sqrt(np.mean(normalized * normalized)))
-    peak = float(np.max(np.abs(normalized)))
-    endpoint_step = abs(int(pcm[0]) - int(pcm[-1]))
-    assert FRAMES == len(pcm) and 0.09 < rms < 0.13
-    assert peak <= 0.551 and endpoint_step <= 1
-    assert np.count_nonzero(np.abs(pcm.astype(np.int32)) >= 32767) == 0
     if args.check:
-        if args.output.read_bytes() != content:
-            raise SystemExit('The audio asset differs from this generator output')
-    else:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_bytes(content)
-    print(json.dumps({'asset': str(args.output), 'sha256': hashlib.sha256(content).hexdigest(),
-                      'bytes': len(content), 'seconds': SECONDS, 'rate': RATE, 'frames': len(pcm),
-                      'channels': 1, 'pcm_bits': 16, 'rms': round(rms, 6),
-                      'peak': round(peak, 6), 'clipped_samples': 0,
-                      'loop_endpoint_step_lsb': endpoint_step, 'check': args.check}, indent=2))
+        data = args.output.read_bytes()
+        current = inspect(data)
+        expected = json.loads(args.metadata.read_text())['output']
+        if current != expected:
+            raise SystemExit('Audio asset differs from its prepared metadata')
+        print(json.dumps({'check': True, **current}, indent=2))
+        return
+    if args.download_source:
+        args.source.parent.mkdir(parents=True, exist_ok=True)
+        with urllib.request.urlopen(SOURCE_URL, timeout=60) as response:
+            args.source.write_bytes(response.read())
+    if not args.source.is_file():
+        raise SystemExit('Provide --source ORIGINAL.wav or use --download-source')
+    data = prepare(args.source)
+    report = {'title': 'Light Rain Distant Thunder July 5th 2016', 'author': 'kvgarlic',
+              'source_page': 'https://commons.wikimedia.org/wiki/File:Light_Rain_Distant_Thunder_July_5th_2016.wav',
+              'original_url': SOURCE_URL, 'original_sha256': SOURCE_SHA,
+              'freesound_page': 'https://freesound.org/people/kvgarlic/sounds/349454/',
+              'license': 'CC0 1.0', 'license_url': 'https://creativecommons.org/publicdomain/zero/1.0/',
+              'processing': {'excerpt_start_seconds': START, 'excerpt_seconds': EXCERPT_SECONDS,
+                             'crossfade_seconds': CROSSFADE_SECONDS, 'crossfade': 'equal power',
+                             'high_pass_hz': 65, 'low_pass_hz': 9000,
+                             'transients': 'offline gentle tanh limiter', 'added_synthesized_audio': False},
+              'output': inspect(data)}
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.metadata.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_bytes(data)
+    args.metadata.write_text(json.dumps(report, indent=2) + '\n')
+    print(json.dumps(report, indent=2))
 
 
 if __name__ == '__main__':
