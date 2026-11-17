@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -55,6 +56,7 @@ import com.winlator.core.PreloaderDialog;
 import com.winlator.core.ProcessHelper;
 import com.winlator.core.StringUtils;
 import com.winlator.core.TarCompressorUtils;
+import com.winlator.core.TsoaRedirectorV2Log;
 import com.winlator.core.Win32AppWorkarounds;
 import com.winlator.core.WineInfo;
 import com.winlator.core.WineInstaller;
@@ -143,6 +145,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private String screenEffectProfile;
     private boolean dedicatedLauncherMode;
     private TsoaOptions tsoaOptions;
+    private int appliedGameHdrMode = -1;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -331,6 +334,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     public void onResume() {
         super.onResume();
         if (dedicatedLauncherMode && inputControlsView != null) applyDedicatedInputOptions();
+        applyDedicatedGameColorOptions("resume");
         if (environment != null) {
             xServerView.onResume();
             environment.onResume();
@@ -628,6 +632,20 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         wincomponents = null;
     }
 
+    private void applyDedicatedGameColorOptions(String source) {
+        if (!dedicatedLauncherMode || tsoaOptions == null || xServerView == null) return;
+        int mode = tsoaOptions.getGameHdrMode();
+        // A singleTask game activity may be resumed after a lobby setting changes.
+        // Keep manual screen effects intact when the lobby preference is unchanged.
+        if (mode == appliedGameHdrMode) return;
+        TsoaGameColor.apply(xServerView.getRenderer(), mode);
+        String diagnostic = "Game HDR preference applied: source=" + source +
+                " mode=" + mode + " previous=" + appliedGameHdrMode;
+        Log.i("TSOA_FE_DIAG", diagnostic);
+        TsoaRedirectorV2Log.append(this, diagnostic);
+        appliedGameHdrMode = mode;
+    }
+
     private void setupUI() {
         FrameLayout rootView = findViewById(R.id.FLXServerDisplay);
         xServerView = new XServerView(this, xServer);
@@ -639,7 +657,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
         xServer.setRenderer(renderer);
         if (dedicatedLauncherMode && "stretch".equals(tsoaOptions.getAspectMode())) renderer.toggleFullscreen();
-        if (dedicatedLauncherMode) TsoaGameColor.apply(renderer, tsoaOptions.getGameHdrMode());
+        applyDedicatedGameColorOptions("setup");
         rootView.addView(xServerView);
 
         globalCursorSpeed = preferences.getFloat("cursor_speed", 1.0f);

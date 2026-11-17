@@ -9,13 +9,23 @@ The centered title and text-only buttons adapt to portrait/landscape without the
 `com.winlator.tsoa.TsoaOptions` stores launcher preferences in `naninovel_launcher`, separate from runtime compatibility preferences. Video, input and audio settings apply on the next game launch; ambience settings update immediately.
 
 - Resolution, preserved/stretched aspect, Android system bars and a DXVK frame limit.
-- Optional game-only SDR color presets labeled HDR simulado (off by default, Suave or Marcante). These reuse the existing Winlator brightness/contrast/gamma effect in one pass. They do not enable HDR output or change the lobby. Manual in-game filters remain usable.
+- Optional game-only SDR color presets labeled HDR simulado (off by default, Suave or Marcante). These reuse the existing Winlator color pass with a bounded lightness curve and adaptive vibrance. They do not enable HDR output or change the lobby. Manual in-game brightness/contrast/gamma filters remain usable.
 - Optional controls: hidden, one ESC button, the existing RTS layout or a custom profile. The existing editor supports key mapping, movement, resizing and element opacity. Creating a custom layout duplicates ESC instead of editing the minimal layout. Reset preserves custom profiles and keeps a copy of the prior ESC layout.
 - Cursor sensitivity, tap-to-click and long-press right click. The existing two-finger right click remains available.
 - Session audio gain/mute through ALSA/PulseAudio. This does not fix FMOD/device compatibility or change the phone's global volume.
 - Rain intensity, background brightness, reduced motion, keep-screen-on and optional haptics.
 - Quiet rain/wind ambience with its own enable/volume settings, separate from game audio. It fades in gently and stops immediately before game launch, on focus loss or when the launcher leaves the foreground. It also pauses when headphones are disconnected and avoids interrupting music already playing in another app.
 - Optional auto-launch once per launcher instance, with a two-second delay cancellable by touching the background, opening another option or pressing Back. It never starts a game while the launcher is paused.
+
+## HDR-style game color
+
+The enhanced presets replace the earlier small brightness/contrast/gamma offsets. Suave uses strength 0.45; Marcante uses 1.0. A bounded HSL-lightness S curve deepens shadows and lifts highlights, followed by gamut-limited adaptive vibrance. Black, white, neutral grays and saturated primary endpoints remain stable. The shader uses one source texture sample and the same existing color pass; no bloom, LUT texture or additional rendering pass is added. This remains SDR enhancement, not HDR display output.
+
+The game activity can be reused because it is singleTask. It now checks the saved mode on resume and applies it only when the lobby preference actually changed. This fixes stale selections while preserving manual filters when the preference is unchanged. Switching Off clears automatic enhancement; manual color adjustments and other effects remain intact.
+
+`TSOA_FE_DIAG` and exported `redirector.log` include a mode-applied record. The first actual color draw per effect/program/strength also records `hdrStrength`, surface dimensions, initial source framebuffer status and GL error. File logging is posted off the GL thread and no per-frame log is emitted. This distinguishes a selected menu mode from an actual shader draw on the phone.
+
+`python3 tools/tests/test_tsoa_game_color.py` exercises the production Java helper/effect with minimal platform interfaces: mode reuse, live uniform changes, bounded strength, Off behavior and preservation of manual effects. Host validation additionally compiled and rendered the exact Java-generated GLSL on Mesa GLES3, checking finite/gamut-bound output, Off identity, neutral/primary preservation and visible color changes. It does not establish device FPS or validate the Honor's BGRA framebuffer; those require the device draw diagnostic and visual test.
 
 ## Ambient audio
 

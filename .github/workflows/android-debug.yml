@@ -63,6 +63,9 @@ jobs:
           python3 tools/generate_tsoa_ambience.py --check
           python3 tools/tests/test_tsoa_pcm_loop.py
 
+      - name: Validate TSOA game color modes
+        run: python3 tools/tests/test_tsoa_game_color.py
+
       - name: Build debug APK
         run: |
           chmod +x ./gradlew

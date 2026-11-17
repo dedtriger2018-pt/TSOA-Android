@@ -150,7 +150,7 @@ public final class TsoaOptionsDialog {
                 new int[]{0, 30, 60}, options.getFpsLimit());
         intChoice("HDR simulado", "game_hdr_mode", new String[]{"Desligado", "Suave", "Marcante"},
                 new int[]{0, 1, 2}, options.getGameHdrMode());
-        note("Ajusta brilho, contraste e gama somente na imagem do jogo. Não ativa HDR real da tela. Vale na próxima abertura do jogo; deixe desligado se notar perda de fluidez.");
+        note("Suave realça discretamente. Marcante aumenta o contraste e a intensidade das cores, mantendo detalhes nas luzes e sombras. Afeta somente o jogo e não ativa HDR real da tela. Vale ao abrir ou voltar à partida; deixe desligado se notar perda de fluidez.");
         note("Resoluções maiores exigem mais do aparelho. 960 × 544 é o ponto de partida testado no Honor X8.");
     }
 

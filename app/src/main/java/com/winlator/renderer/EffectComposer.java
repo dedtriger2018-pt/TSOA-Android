@@ -1,7 +1,10 @@
 package com.winlator.renderer;
 
 import android.opengl.GLES20;
+import android.util.Log;
 
+import com.winlator.core.TsoaRedirectorV2Log;
+import com.winlator.renderer.effects.ColorEffect;
 import com.winlator.renderer.effects.Effect;
 import com.winlator.renderer.material.ScreenMaterial;
 
@@ -12,6 +15,11 @@ public class EffectComposer {
     private RenderTarget readBuffer = null;
     private RenderTarget writeBuffer = null;
     private final ArrayList<Effect> effects = new ArrayList<>();
+    private boolean sourceFramebufferChecked;
+    private int sourceFramebufferStatus;
+    private ColorEffect lastLoggedColorEffect;
+    private float lastLoggedHdrStrength = Float.NaN;
+    private int lastLoggedColorProgram = -1;
 
     public EffectComposer(GLRenderer renderer) {
         this.renderer = renderer;
@@ -57,6 +65,26 @@ public class EffectComposer {
         material.setUniformInt(material.uniforms.screenTexture, 0);
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, renderer.quadVertices.count());
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+
+        if (effect instanceof ColorEffect) {
+            ColorEffect color = (ColorEffect)effect;
+            float strength = color.getHdrStrength();
+            if (color != lastLoggedColorEffect || strength != lastLoggedHdrStrength ||
+                    material.programId != lastLoggedColorProgram) {
+                lastLoggedColorEffect = color;
+                lastLoggedHdrStrength = strength;
+                lastLoggedColorProgram = material.programId;
+                final String diagnostic = "Game color pass drawn: hdrStrength=" + strength
+                        + " program=" + material.programId
+                        + " surface=" + renderer.surfaceWidth + "x" + renderer.surfaceHeight
+                        + " sourceFboStatus=0x" + Integer.toHexString(sourceFramebufferStatus)
+                        + " glError=0x" + Integer.toHexString(GLES20.glGetError());
+                Log.i("TSOA_FE_DIAG", diagnostic);
+                // Export the first real draw without doing file I/O on the GL thread.
+                renderer.xServerView.post(() -> TsoaRedirectorV2Log.append(
+                        renderer.xServerView.getContext(), diagnostic));
+            }
+        }
     }
 
     private void initBuffers() {
@@ -75,6 +103,10 @@ public class EffectComposer {
         initBuffers();
 
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, hasEffects() ? readBuffer.getFramebuffer() : 0);
+        if (!sourceFramebufferChecked) {
+            sourceFramebufferStatus = GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER);
+            sourceFramebufferChecked = true;
+        }
         renderer.drawFrame();
 
         for (Effect effect : effects) {
