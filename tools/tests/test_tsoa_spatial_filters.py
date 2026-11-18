@@ -24,6 +24,12 @@ public final class TsoaSpatialOptionsCheck {
     public static void main(String[] args) {
         Context context = new Context();
         TsoaOptions options = new TsoaOptions(context);
+        for (int level : new int[]{0,1,2,3,4,5,-1}) {
+            context.values.put("game_lumen_level", level);
+            require(options.getLumenLevel() == (level >= 0 && level <= 4 ? level : 0), "saved Lumen selector");
+        }
+        context.values.put("game_genesis_level", 4);
+        require(options.getGenesisLevel() == 0, "Ultra+ leaked into Genesis choices");
         require(!options.isGameFxaaEnabled(), "FXAA must default Off");
         require(!options.isGameFsrEnabled(), "FSR must default Off");
         require(options.getGameSharpeningStrength() == 0, "Sharpening must default Off");
@@ -136,6 +142,20 @@ public final class SpatialLifecycleCheck {
         renderer.frame();
         require(easu(0)&&fxaa(1)&&rcas(2)&&color.isBloomEnabled()&&color.getHdrStrength()==1.0f,
                 "Leaving Original Mode failed to recover the configured effects");
+
+        renderer.effectComposer.configureReconstruction(0,4);
+        renderer.frame();
+        require(SceneReconstruction.lastGenesis==0&&SceneReconstruction.lastLumen==4,
+                "Lumen Ultra+ lost with Genesis Off and spatial effects active");
+        renderer.effectComposer.setQualityLimit(2);
+        renderer.frame();
+        require(SceneReconstruction.lastLumen==2,"Adaptive limit did not lower Ultra+");
+        renderer.effectComposer.setQualityLimit(3);
+        renderer.effectComposer.configureReconstruction(1,4);
+        renderer.frame();
+        require(SceneReconstruction.lastGenesis==1&&SceneReconstruction.lastLumen==4,
+                "Genesis Ultra+ independent selection lost");
+        renderer.effectComposer.configureReconstruction(0,0);
 
         // Native-resolution FSR alone must bypass allocation and capture entirely.
         GLRenderer nativeRenderer=new GLRenderer();

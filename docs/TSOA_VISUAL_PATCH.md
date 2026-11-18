@@ -4,14 +4,25 @@ Base da Final Edition `1499f3f`, validada pelo jogador no Honor X8.
 
 ## Lumen
 
-O mapa auxiliar usa gradientes em duas escalas para reduzir a influência
-da microtextura nas normais. Confiança local, consistência temporal e
-luminância limitam a iluminação. O preset Intermediário usa oclusão
-ampla e leve. O Ultra também considera um termo curto de contato. Os
-realces se apoiam em brilho suave existente e recebem menos peso em
-áreas saturadas, de alto contraste ou compatíveis com tons de pele.
-Os materiais e a proteção de personagens continuam heurísticos em
-cenas 2D já compostas. A análise continua restrita aos quadros reais.
+O caminho direto de iluminação do APK funcional foi recuperado.
+Normais com amostras espaçadas, seleção de realces já presentes na
+arte e sombras limitadas por luminância reduzem o relevo artificial.
+A confiança atenua os detalhes locais sem zerar a luz em uma cena
+reconhecida. Ultra+ aumenta os reflexos aproximados, usando um mapa
+auxiliar de até 320 pixels no eixo maior. Os materiais e a proteção de
+personagens continuam heurísticos em cenas 2D já compostas.
+
+O código do Smart Patch mantinha as mesmas preferências, o mesmo
+registro no compositor e o mesmo uniform levels.y. A regressão
+reproduzida estava em 94fa3be, na segunda ponderação
+smoothstep(0.45,0.88,map.a) aplicada à luz. Em uma cena nova,
+map.a começava em 0,47. A ponderação extra reduzia a resposta a
+menos de 1/255 embora a confiança global fosse 255. Na prova GLES, o
+Ultra de 1499f3f alterou 28.122 pixels em mais de um nível no
+fixture de primeiro quadro. O Smart Patch alterou zero. Retirar só a
+segunda ponderação recuperou o efeito. A nova suíte mede os cinco
+presets também nessa condição inicial. O guia mantém o diagnóstico
+por leitura da GPU. [Gênesis e Lumen](TSOA_GENESIS_LUMEN.md)
 
 ## Beyond Screen
 

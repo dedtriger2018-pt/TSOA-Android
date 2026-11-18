@@ -53,7 +53,10 @@ public final class TsoaOptions {
     static final String LUMEN = "game_lumen_level";
 
     public int getGenesisLevel() { return getSceneLevel(GENESIS); }
-    public int getLumenLevel() { return getSceneLevel(LUMEN); }
+    public int getLumenLevel() {
+        int level = preferences.getInt(LUMEN, 0);
+        return level >= 1 && level <= 4 ? level : 0;
+    }
     private int getSceneLevel(String key) {
         int level = preferences.getInt(key, 0);
         return level >= 1 && level <= 3 ? level : 0;

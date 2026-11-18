@@ -1,7 +1,7 @@
 # Gênesis e Lumen automáticos
 
 Em **Configurações → Vídeo**, escolha Desligado, Baixo, Intermediário ou Ultra
-para cada motor e inicie o jogo. As preferências do APK anterior são
+para cada motor. Ultra+ fica disponível para o Lumen e inicie o jogo. As preferências do APK anterior são
 reaproveitadas. Os efeitos vêm desligados em novas instalações.
 
 ## Dados e reconstrução
@@ -19,15 +19,14 @@ jogo durante a análise.
   motores. Gradientes, contraste regional e posição produzem estimativas de
   relevo e contornos. Os canais auxiliares guardam tendência especular e
   estabilidade local. O Lumen calcula normais do gradiente de relevo.
-- O Lumen mantém dois mapas auxiliares de baixa resolução. O mapa cruza
-  inclinações em duas escalas, estima confiança e favorece realces
-  suaves já presentes na arte. A mistura temporal é condicionada à
-  estabilidade local e à confiança da cena.
+- O Lumen usa amostras mais espaçadas do mapa estrutural para suavizar
+  normais e prefere realces suaves já presentes na arte. Ultra+ acrescenta
+  dois mapas temporais de até 320 pixels por eixo para reflexos aproximados.
 - O reconhecimento amostra 40 regiões por quadro real. Mudanças globais
   suspendem a reconstrução e fazem a próxima análise substituir o cache. Em
   regiões estáveis, os mapas anteriores reduzem variações de relevo e
   material. O cache estrutural retém os mapas corrente e anterior em até 576 KiB.
-  Com Lumen ativo, os auxiliares acrescentam até 288 KiB. Repetições do mesmo quadro reaproveitam o cache. A
+  Ultra+ pode acrescentar até 800 KiB para seus dois mapas de reflexão. Repetições do mesmo quadro reaproveitam o cache. A
   análise aquece em intervalos de 48 ms e depois usa intervalos de 88 a
   140 ms, conforme o preset mais alto dos dois motores.
 - Gênesis desloca amostras de acordo com o relevo. A comparação com o
@@ -67,7 +66,7 @@ O visor `TSOA_FE_DIAG` e o registro de diagnóstico do launcher recebem
 `Scene GPU draw` no primeiro quadro e a cada cinco segundos de quadros
 reais. Um shader compara a textura de entrada com a de saída e escreve uma
 amostra de 8×4 para leitura de 128 bytes. O log inclui presets (`g` e `l`),
-`analyses`, `confidence8`, `cut8`, `changedCells` e `maxDelta8`. Um valor
+`analyses`, `confidence8`, `cut8`, `changedCells` e `maxDelta8`. O campo reflections informa o tamanho real do mapa Ultra+. Um valor
 positivo de `changedCells` prova uma alteração maior que 1/255 em pelo menos
 uma das regiões amostradas, antes do Bloom e HDR. `Scene GPU bypassed`
 identifica falhas. A leitura da GPU é periódica para evitar sincronização

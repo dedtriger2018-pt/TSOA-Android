@@ -273,4 +273,6 @@
     <string name="tsoa_pda_count">%1$d 条记录 · %2$d 条未查看</string>
     <string name="tsoa_pda_opening">正在打开画面…</string>
     <string name="tsoa_beyond_title">屏幕延展</string>
+    <string name="tsoa_lumen_ultra_plus">超高+</string>
+    <string name="tsoa_lumen_ultra_plus_detail">超高+使用最长边 320 像素的贴图并增强近似反射，增加 GPU 开销。</string>
 </resources>

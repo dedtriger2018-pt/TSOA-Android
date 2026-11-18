@@ -103,7 +103,7 @@ public class EffectComposer {
     /** Safe on the settings thread. Uploads and releases run only under the owning EGL context. */
     public synchronized void configureReconstruction(int genesis, int lumen) {
         genesis = Math.max(0, Math.min(3, genesis));
-        lumen = Math.max(0, Math.min(3, lumen));
+        lumen = Math.max(0, Math.min(4, lumen));
         if (genesis == genesisLevel && lumen == lumenLevel) return;
         sceneChanged = true;
         genesisLevel = genesis;
@@ -394,7 +394,8 @@ public class EffectComposer {
         // color and Bloom consume the reconstructed real frame before FG records it.
         if (useScene && outWidth > 0 && outHeight > 0) {
             if (reconstruction == null) reconstruction = new SceneReconstruction();
-            if (reconstruction.draw(Math.min(genesisLevel, qualityLimit), Math.min(lumenLevel, qualityLimit), renderer,
+            int effectiveLumen = qualityLimit == 3 ? lumenLevel : Math.min(lumenLevel, qualityLimit);
+            if (reconstruction.draw(Math.min(genesisLevel, qualityLimit), effectiveLumen, renderer,
                     readBuffer.getTextureId(), writeBuffer, outX, outY, outWidth, outHeight)) swapBuffers();
         }
         if ((useCinematic || useBeyond) && (outWidth <= 0 || outHeight <= 0)) useCinematic = useBeyond = false;

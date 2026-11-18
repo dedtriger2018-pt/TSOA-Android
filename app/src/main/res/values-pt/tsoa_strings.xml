@@ -273,4 +273,6 @@
     <string name="tsoa_pda_count">%1$d registros · %2$d ainda não vistos</string>
     <string name="tsoa_pda_opening">Abrindo captura…</string>
     <string name="tsoa_beyond_title">Beyond Screen</string>
+    <string name="tsoa_lumen_ultra_plus">Ultra+</string>
+    <string name="tsoa_lumen_ultra_plus_detail">Ultra+ usa um mapa de até 320 px e reforça reflexos aproximados. Requer mais GPU.</string>
 </resources>

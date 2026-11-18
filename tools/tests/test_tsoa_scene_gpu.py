@@ -120,7 +120,8 @@ class Scene:
         self.map_size = (96, 54)
         self.reference = [texture(*self.map_size), texture(*self.map_size)]
         self.structure = [texture(*self.map_size), texture(*self.map_size)]
-        self.smart = [texture(*self.map_size), texture(*self.map_size)]
+        self.detail_size = (160, 90)
+        self.smart = [texture(*self.detail_size), texture(*self.detail_size)]
         self.score, self.output, self.probe = texture(1, 1), texture(*self.size), texture(8, 4)
         self.index = 0
         self.ready = False
@@ -142,10 +143,11 @@ class Scene:
             draw(self.programs["estimate"], self.structure[nxt], self.map_size,
                  {"screenTexture": self.reference[nxt], "referenceTexture": self.reference[self.index],
                   "structureTexture": self.structure[self.index], "scoreTexture": self.score}, self.step)
-            self.latest_smart = draw(self.programs["lumenMap"], self.smart[nxt], self.map_size,
-                 {"screenTexture": self.reference[nxt], "structureTexture": self.structure[nxt],
+            self.latest_smart = draw(self.programs["lumenMap"], self.smart[nxt], self.detail_size,
+                 {"screenTexture": src, "structureTexture": self.structure[nxt],
                   "scoreTexture": self.score, "smartTexture": self.smart[self.index]},
-                 self.step | {"history": float(self.ready)})
+                 self.coords | {"history": float(self.ready),
+                                "detailStep": tuple(1 / n for n in self.detail_size)})
             self.index = nxt
             if not self.ready:
                 self.ready = True
@@ -191,10 +193,17 @@ def main():
     expected = np.pad(source, ((0, 0), (12, 12), (0, 0)))
     score, off, probe = model.draw(source, (0, 0))
     assert score[0] >= 230 and np.array_equal(off, expected) and not probe[..., 0].max()
+    # Keep the cold stability of 0.47: the regression zeroed valid illumination here.
+    cold_measured = []
+    for preset in range(1, 5):
+        score, cold, probe = model.draw(source, (0, preset))
+        assert score[0] >= 230 and probe[..., 0].max() >= 2, (preset, score, probe[..., 0].max())
+        cold_measured.append(int(probe[..., 0].max()))
+    assert cold_measured == sorted(set(cold_measured)), cold_measured
     model.draw(source, analyze=True)
     model.draw(source, analyze=True)
     measured = {}
-    for levels in ((1, 0), (2, 0), (3, 0), (0, 1), (0, 2), (0, 3), (3, 3)):
+    for levels in ((1, 0), (2, 0), (3, 0), (0, 1), (0, 2), (0, 3), (0, 4), (3, 4)):
         score, out, probe = model.draw(source, levels)
         difference = delta(out, expected)
         assert score[0] >= 230 and probe[..., 0].max() > 1, (levels, score, probe[..., 0].max())
@@ -202,7 +211,7 @@ def main():
         assert not difference[:43].max(), "dialogue band"
         assert not difference[:, :12].max() and not difference[:, -12:].max(), "outside viewport"
         measured[str(levels)] = int(probe[..., 0].max())
-    assert measured["(0, 3)"] > measured["(0, 1)"]
+    assert measured["(0, 4)"] > measured["(0, 3)"] > measured["(0, 2)"] > measured["(0, 1)"]
     assert not np.array_equal(model.draw(source, (3, 0), phase=.3)[1], model.draw(source, (3, 0), phase=3.5)[1])
 
     # Medium cannot cut more than a few 8-bit levels of signed diffuse/AO.
@@ -217,7 +226,8 @@ def main():
     for _ in range(3):
         _, painted_result, _ = painted.draw(texture_paint, (0, 2), analyze=True)
     signed = painted_result[..., :3].astype(int) - texture_paint[..., :3].astype(int)
-    assert np.abs(np.diff(signed[72:145, 40:280], axis=1)).mean() < 1.6
+    relative = signed / np.maximum(48, texture_paint[..., :3])
+    assert np.abs(np.diff(relative[72:145, 40:280], axis=1)).mean() < 0.044
     assert not np.array_equal(painted_result, texture_paint)
 
     # Map stores a highlight-confidence channel independent of diffuse brightness.
@@ -229,9 +239,18 @@ def main():
     material[48:146, 170:287, :3] = np.clip(139 + 104*shine[48:146,170:287,None], 0, 255)
     survey = Scene(programs, (320, 180))
     for _ in range(3):
-        survey.draw(material, (0, 2), analyze=True)
+        survey.draw(material, (0, 4), analyze=True)
     gloss = survey.latest_smart[..., 3]
-    assert gloss[27:36, 61:70].max() > 75 and not gloss[27:36, 21:37].any()
+    assert gloss[49:57, 102:114].max() > 75 and not gloss[49:57, 30:66].any()
+
+    color_map = survey.latest_smart.copy()
+    color_map[..., 3] = 0
+    _, reflected, _ = survey.draw(material, (0, 4))
+    GL.glBindTexture(GL.GL_TEXTURE_2D, survey.smart[survey.index])
+    GL.glTexSubImage2D(GL.GL_TEXTURE_2D, 0, 0, 0, *survey.detail_size, GL.GL_RGBA, GL.GL_UNSIGNED_BYTE, color_map)
+    _, reflection_off, _ = survey.draw(material, (0, 4))
+    assert delta(reflected, reflection_off)[102:114, 209:223, :3].max() > 1
+    assert np.array_equal(reflected[80:124, 60:115], reflection_off[80:124, 60:115])
 
     overlay = source.copy()
     overlay[82:128, 140:186] = (250, 14, 220, 255)
@@ -255,7 +274,7 @@ def main():
     assert not score[0] and not probe[..., 0].max(), "confirmed flat screen should bypass"
 
     report = {"driver": GL.glGetString(GL.GL_RENDERER).decode(), "max_delta_8bit": measured,
-              "scene_cut_bypass": True, "automatic_recovery": True, "protected_regions": True}
+              "scene_cut_bypass": True, "automatic_recovery": True, "protected_regions": True, "cold_lumen_delta_8bit": cold_measured}
     if args.reference:
         from PIL import Image
         def local_capture(path):

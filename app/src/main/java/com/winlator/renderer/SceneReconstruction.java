@@ -17,7 +17,8 @@ final class SceneReconstruction {
     private EGLContext context;
     private RenderTarget reference, nextReference, structure, nextStructure, score, probe, smart, nextSmart;
     private Pass capture, recognize, estimate, reconstruct, measure, estimateLumen;
-    private boolean lumenReady;
+    private boolean lumenReady, highFailed;
+    private int detailWidth, detailHeight;
     private int surfaceWidth, surfaceHeight, viewX, viewY, viewWidth, viewHeight, mapWidth, mapHeight;
     private long lastSource, lastAnalysis, lastProbe;
     private int analyses, frames;
@@ -26,6 +27,7 @@ final class SceneReconstruction {
     private static final class Pass extends ScreenMaterial {
         private final String fragment;
         final Uniform reference = new Uniform("referenceTexture"), structure = new Uniform("structureTexture");
+        final Uniform detailStep = new Uniform("detailStep");
         final Uniform smart = new Uniform("smartTexture");
         final Uniform score = new Uniform("scoreTexture"), origin = new Uniform("viewOrigin");
         final Uniform extent = new Uniform("viewExtent"), step = new Uniform("mapStep");
@@ -110,20 +112,50 @@ final class SceneReconstruction {
     private void prepareLumen() {
         estimateLumen = new Pass(SceneShaders.lumenMap());
         compile(estimateLumen);
+        int span = Math.max(viewWidth, viewHeight);
+        int limit = Math.min(320, span);
+        detailWidth = Math.max(1, Math.round(limit * (float)viewWidth/span));
+        detailHeight = Math.max(1, Math.round(limit * (float)viewHeight/span));
         smart = new RenderTarget(); nextSmart = new RenderTarget();
-        allocate(smart, mapWidth, mapHeight); allocate(nextSmart, mapWidth, mapHeight);
+        allocate(smart, detailWidth, detailHeight); allocate(nextSmart, detailWidth, detailHeight);
     }
 
-    private void analyzeLumen() {
-        prepare(estimateLumen, nextSmart, mapWidth, mapHeight, reference.getTextureId(),
-                0, structure.getTextureId(), score.getTextureId());
-        estimateLumen.setUniformInt(estimateLumen.smart, 4);
-        estimateLumen.setUniformFloat(estimateLumen.history, lumenReady ? 1f : 0f);
-        bind(4, smart.getTextureId());
-        render();
-        RenderTarget oldSmart = smart;
-        smart = nextSmart; nextSmart = oldSmart;
-        lumenReady = true;
+    private boolean analyzeLumen(GLRenderer renderer, int input) {
+        if (highFailed) return false;
+        try {
+            if (estimateLumen == null) prepareLumen();
+            prepare(estimateLumen, nextSmart, detailWidth, detailHeight, input,
+                    0, structure.getTextureId(), score.getTextureId());
+            estimateLumen.setUniformInt(estimateLumen.smart, 4);
+            estimateLumen.setUniformFloat(estimateLumen.history, lumenReady ? 1f : 0f);
+            estimateLumen.setUniformVec2(estimateLumen.detailStep, 1f/detailWidth, 1f/detailHeight);
+            bind(4, smart.getTextureId());
+            render();
+            int error = GLES20.glGetError();
+            if (error != GLES20.GL_NO_ERROR)
+                throw new IllegalStateException("reflection map glError=0x" + Integer.toHexString(error));
+            RenderTarget oldSmart = smart;
+            smart = nextSmart; nextSmart = oldSmart;
+            lumenReady = true;
+            return true;
+        } catch (RuntimeException unavailable) {
+            releaseLumen();
+            for (int i = 0; i < 8 && GLES20.glGetError() != GLES20.GL_NO_ERROR; i++) {}
+            highFailed = true;
+            renderer.logGraphics("Lumen Ultra+ fallback to Ultra: " + unavailable.getMessage());
+            return false;
+        }
+    }
+
+    private void releaseLumen() {
+        if (context != null && context.equals(EGL14.eglGetCurrentContext())) {
+            if (smart != null) smart.destroy();
+            if (nextSmart != null) nextSmart.destroy();
+            if (estimateLumen != null) estimateLumen.destroy();
+        }
+        smart = nextSmart = null;
+        estimateLumen = null;
+        lumenReady = false;
     }
 
     private void analyze(int input) {
@@ -158,6 +190,7 @@ final class SceneReconstruction {
                 + " analyses=" + analyses + " map=" + mapWidth + "x" + mapHeight
                 + " confidence8=" + (pixels.get(1) & 255) + " cut8=" + (pixels.get(2) & 255)
                 + " changedCells=" + changed + "/" + (PROBE_WIDTH * PROBE_HEIGHT) + " maxDelta8=" + maxDelta
+                + " reflections=" + (lumen == 4 ? detailWidth + "x" + detailHeight : "off")
                 + " program=" + reconstruct.programId);
     }
 
@@ -178,7 +211,8 @@ final class SceneReconstruction {
         try {
             GLES20.glDisable(GLES20.GL_BLEND);
             if (capture == null) initialize();
-            if (lumen > 0 && estimateLumen == null) prepareLumen();
+            if (lumen < 4 && estimateLumen != null) releaseLumen();
+            if (highFailed && lumen == 4) lumen = 3;
             long time = renderer.getSceneContentTime();
             boolean fresh = frames == 0 || time != lastSource;
             if (fresh) {
@@ -190,7 +224,7 @@ final class SceneReconstruction {
                 long interval = analyses < 3 ? 48_000_000L : 166_000_000L - quality * 26_000_000L;
                 if (!previous || age >= interval || age < 0) {
                     analyze(input);
-                    if (lumen > 0) analyzeLumen();
+                    if (lumen == 4 && !analyzeLumen(renderer, input)) lumen = 3;
                     lastAnalysis = time;
                     if (!previous) recognize(input, true);
                 }
@@ -198,11 +232,11 @@ final class SceneReconstruction {
                 frames++;
             }
 
-            if (lumen > 0 && !lumenReady) analyzeLumen();
+            if (lumen == 4 && !lumenReady && !analyzeLumen(renderer, input)) lumen = 3;
             prepare(reconstruct, output, surfaceWidth, surfaceHeight, input, reference.getTextureId(),
                     structure.getTextureId(), score.getTextureId());
             reconstruct.setUniformInt(reconstruct.smart, 4);
-            bind(4, lumen > 0 ? smart.getTextureId() : 0);
+            bind(4, lumen == 4 ? smart.getTextureId() : 0);
             reconstruct.setUniformVec2(reconstruct.levels, genesis, lumen);
             reconstruct.setUniformFloat(reconstruct.phase,
                     (float)((time % 9_000_000_000L) * (2.0 * Math.PI / 9_000_000_000.0)));
@@ -229,17 +263,17 @@ final class SceneReconstruction {
     }
 
     void release() {
+        releaseLumen();
         if (context != null && context.equals(EGL14.eglGetCurrentContext())) {
-            for (RenderTarget target : new RenderTarget[]{reference, nextReference, structure, nextStructure, score, probe, smart, nextSmart})
+            for (RenderTarget target : new RenderTarget[]{reference, nextReference, structure, nextStructure, score, probe})
                 if (target != null) target.destroy();
-            for (Pass pass : new Pass[]{capture, recognize, estimate, reconstruct, measure, estimateLumen})
+            for (Pass pass : new Pass[]{capture, recognize, estimate, reconstruct, measure})
                 if (pass != null) pass.destroy();
         }
-        reference = nextReference = structure = nextStructure = score = probe = smart = nextSmart = null;
-        capture = recognize = estimate = reconstruct = measure = estimateLumen = null;
-        lumenReady = false;
+        reference = nextReference = structure = nextStructure = score = probe = null;
+        capture = recognize = estimate = reconstruct = measure = null;
         context = null;
         frames = analyses = 0;
-        failed = false;
+        failed = highFailed = false;
     }
 }

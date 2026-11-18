@@ -280,9 +280,10 @@ class PresentationEffects {
     "com/winlator/renderer/SceneReconstruction.java": """
 package com.winlator.renderer;
 class SceneReconstruction {
+    static int lastGenesis=-1,lastLumen=-1;
     boolean available(int w,int h){return true;}
     boolean draw(int g,int l,GLRenderer r,int in,RenderTarget out,int x,int y,int w,int h){
-        throw new AssertionError("Reconstruction disabled in legacy filters test");
+        lastGenesis=g; lastLumen=l; return false;
     }
     void release(){}
 }

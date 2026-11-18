@@ -185,7 +185,10 @@ public final class TsoaOptionsDialog {
         String[] levels = {s(R.string.tsoa_off), s(R.string.tsoa_scene_low), s(R.string.tsoa_scene_medium), s(R.string.tsoa_scene_ultra)};
         int[] valuesByLevel = {0, 1, 2, 3};
         intChoice(s(R.string.tsoa_genesis), TsoaOptions.GENESIS, levels, valuesByLevel, options.getGenesisLevel());
-        intChoice(s(R.string.tsoa_lumen), TsoaOptions.LUMEN, levels, valuesByLevel, options.getLumenLevel());
+        intChoice(s(R.string.tsoa_lumen), TsoaOptions.LUMEN,
+                new String[]{levels[0], levels[1], levels[2], levels[3], s(R.string.tsoa_lumen_ultra_plus)},
+                new int[]{0, 1, 2, 3, 4}, options.getLumenLevel());
+        note(s(R.string.tsoa_lumen_ultra_plus_detail));
         note(s(R.string.tsoa_scene_detail));
         intChoice(s(R.string.tsoa_cinematic), "game_cinematic", levels, valuesByLevel, options.getCinematicLevel());
         slider(s(R.string.tsoa_cinematic_amount), "game_cinematic_amount", 0, 100, options.getCinematicAmount(), false, "%");

@@ -273,4 +273,6 @@
     <string name="tsoa_pda_count">%1$d records · %2$d unviewed</string>
     <string name="tsoa_pda_opening">Opening capture…</string>
     <string name="tsoa_beyond_title">Beyond Screen</string>
+    <string name="tsoa_lumen_ultra_plus">Ultra+</string>
+    <string name="tsoa_lumen_ultra_plus_detail">Ultra+ uses a map up to 320 px and boosts approximate reflections. It uses more GPU time.</string>
 </resources>
