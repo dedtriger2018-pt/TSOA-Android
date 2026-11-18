@@ -85,7 +85,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends libegl1 libegl-mesa0 libgles2 libgl1-mesa-dri
           python3 -m venv "${RUNNER_TEMP}/tsoa-scene"
           SCENE_PYTHON="${RUNNER_TEMP}/tsoa-scene/bin/python"
-          "$SCENE_PYTHON" -m pip install --disable-pip-version-check --only-binary=:all: 'Pillow==11.3.0' 'numpy==2.2.6' 'PyOpenGL==3.1.10'
+          "$SCENE_PYTHON" -m pip install --disable-pip-version-check --only-binary=:all: 'Pillow==11.3.0' 'numpy==2.3.5' 'PyOpenGL==3.1.10'
           "$SCENE_PYTHON" tools/tests/test_tsoa_scene_profile.py
           "$SCENE_PYTHON" tools/tests/test_tsoa_scene_gpu.py
 
