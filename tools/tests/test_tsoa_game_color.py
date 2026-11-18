@@ -267,6 +267,20 @@ public class TsoaGameColorCheck {
 # Trace the actual Java helper/composer without an Android runtime. The separate
 # GLES runner checks the exact production shaders on a real surfaceless context.
 LIFECYCLE_STUBS = {
+    "com/winlator/renderer/SceneProfile.java": """
+package com.winlator.renderer;
+public class SceneProfile { public int sourceWidth,sourceHeight; }
+""",
+    "com/winlator/renderer/SceneReconstruction.java": """
+package com.winlator.renderer;
+class SceneReconstruction {
+    boolean available(SceneProfile s,int w,int h){return true;}
+    boolean draw(SceneProfile s,int g,int l,GLRenderer r,int in,int out,int x,int y,int w,int h){
+        throw new AssertionError("Reconstruction disabled in legacy filters test");
+    }
+    void release(){}
+}
+""",
     "android/opengl/EGLContext.java": """
 package android.opengl;
 public final class EGLContext {
@@ -348,7 +362,7 @@ public class GLES20 {
 """,
     "android/util/Log.java": """
 package android.util;
-public class Log { public static int i(String tag,String text) { return 0; } }
+public class Log { public static int i(String tag,String text) { return 0; } public static int w(String tag,String text){return 0;} }
 """,
     "com/winlator/core/TsoaRedirectorV2Log.java": """
 package com.winlator.core;
@@ -413,6 +427,8 @@ public class GLRenderer {
     public int getGameWidth(){return gameWidth;}
     public int getGameHeight(){return gameHeight;}
     public boolean isFullscreen(){return fullscreen;}
+    public float getMagnifierZoom(){return 1;}
+    public boolean isScreenOffsetYRelativeToCursor(){return false;}
     public void drawNativeFrame(){
         nativeCaptures++;
         android.opengl.GLES20.glViewport(0,0,gameWidth,gameHeight);

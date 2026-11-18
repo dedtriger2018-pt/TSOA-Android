@@ -34,6 +34,9 @@ public final class TsoaOptionsDialog {
         void editControls();
         void resetControls();
         void importGame();
+        void createScene();
+        void importScene();
+        void removeScene();
         void exportSaves();
         void importSaves();
         void verifyFiles();
@@ -179,6 +182,21 @@ public final class TsoaOptionsDialog {
                 "game_fsr_enabled", options.isGameFsrEnabled());
         toggle(s(R.string.tsoa_frame_generation), s(R.string.tsoa_frame_generation_detail),
                 "game_frame_generation_enabled", options.isGameFrameGenerationEnabled());
+        String[] levels = {s(R.string.tsoa_off), s(R.string.tsoa_scene_low), s(R.string.tsoa_scene_medium), s(R.string.tsoa_scene_ultra)};
+        int[] valuesByLevel = {0, 1, 2, 3};
+        intChoice(s(R.string.tsoa_genesis), TsoaOptions.GENESIS, levels, valuesByLevel, options.getGenesisLevel());
+        intChoice(s(R.string.tsoa_lumen), TsoaOptions.LUMEN, levels, valuesByLevel, options.getLumenLevel());
+        note(s(R.string.tsoa_scene_detail));
+        TextView status = sectionLabel(s(R.string.tsoa_scene_checking));
+        TsoaSceneStore.read(activity, (profile, damaged) -> {
+            if (!status.isAttachedToWindow()) return;
+            if (damaged) status.setText(s(R.string.tsoa_scene_invalid));
+            else if (profile == null) status.setText(s(R.string.tsoa_scene_missing));
+            else status.setText(s(R.string.tsoa_scene_ready, profile.width, profile.height));
+        });
+        action(s(R.string.tsoa_scene_create), null, actions::createScene, true);
+        action(s(R.string.tsoa_scene_import), null, actions::importScene, true);
+        action(s(R.string.tsoa_scene_remove), null, actions::removeScene, true);
         note(s(R.string.tsoa_game_filters_detail));
         note(s(R.string.tsoa_resolution_detail));
     }

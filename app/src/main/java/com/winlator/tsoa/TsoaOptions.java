@@ -49,6 +49,16 @@ public final class TsoaOptions {
     /** Experimental game-only intermediate frames; opt in after checking device stability. */
     public boolean isGameFrameGenerationEnabled() { return preferences.getBoolean("game_frame_generation_enabled", false); }
 
+    static final String GENESIS = "game_genesis_level";
+    static final String LUMEN = "game_lumen_level";
+
+    public int getGenesisLevel() { return getSceneLevel(GENESIS); }
+    public int getLumenLevel() { return getSceneLevel(LUMEN); }
+    private int getSceneLevel(String key) {
+        int level = preferences.getInt(key, 0);
+        return level >= 1 && level <= 3 ? level : 0;
+    }
+
     public int getFpsLimit() {
         int value = preferences.getInt("fps_limit", 0);
         return value == 30 || value == 60 ? value : 0;

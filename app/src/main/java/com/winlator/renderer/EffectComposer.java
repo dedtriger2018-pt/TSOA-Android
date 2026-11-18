@@ -42,6 +42,56 @@ public class EffectComposer {
     private boolean loggedFxaa, loggedFsr, loggedFsrActive;
     private int loggedSharpness = -1, loggedOutputWidth, loggedOutputHeight, loggedInputWidth, loggedInputHeight;
 
+    private SceneProfile sceneProfile;
+    private int genesisLevel, lumenLevel;
+    private SceneReconstruction reconstruction;
+    private boolean sceneChanged;
+    private boolean reconstructionOnlyBuffers;
+    private boolean sceneTargetsChecked, sceneTargetsComplete;
+
+    /** Safe on the settings thread. Uploads and releases run only under the owning EGL context. */
+    public synchronized void configureReconstruction(SceneProfile profile, int genesis, int lumen) {
+        genesis = Math.max(0, Math.min(3, genesis));
+        lumen = Math.max(0, Math.min(3, lumen));
+        if (genesis == 0 && lumen == 0) profile = null;
+        if (profile == sceneProfile && genesis == genesisLevel && lumen == lumenLevel) return;
+        sceneChanged |= profile != sceneProfile;
+        sceneProfile = profile;
+        genesisLevel = genesis;
+        lumenLevel = lumen;
+        visualRevision++;
+        renderer.xServerView.queueEvent(this::releaseChangedScene);
+        renderer.xServerView.requestRender();
+    }
+
+    private synchronized void releaseChangedScene() {
+        if (!sceneChanged || EGL14.eglGetCurrentContext().equals(EGL14.EGL_NO_CONTEXT)) return;
+        if (reconstruction != null) reconstruction.release();
+        reconstruction = null;
+        if (sceneProfile == null && reconstructionOnlyBuffers && !gameFxaa && !gameFsr
+                && gameSharpness == 0 && effects.isEmpty()) {
+            if (EGL14.eglGetCurrentContext().equals(bufferContext)) {
+                if (readBuffer != null) readBuffer.destroy();
+                if (writeBuffer != null) writeBuffer.destroy();
+            }
+            readBuffer = writeBuffer = null;
+            sourceFramebufferChecked = false;
+            reconstructionOnlyBuffers = false;
+        }
+        sceneTargetsChecked = false;
+        sceneChanged = false;
+    }
+
+    private boolean canUseScene() {
+        if (sceneProfile == null || renderer.getMagnifierZoom() != 1f || renderer.isScreenOffsetYRelativeToCursor()) return false;
+        int gameWidth = renderer.getGameWidth(), gameHeight = renderer.getGameHeight();
+        if (gameWidth <= 0 || gameHeight <= 0) return false;
+        // Allow ordinary 960x544 vs 16:9 rounding. A differently cropped scene needs its own maps.
+        double ratio = (double)sceneProfile.sourceWidth * gameHeight / ((double)sceneProfile.sourceHeight * gameWidth);
+        return Math.abs(ratio - 1.0) <= 0.015 && (reconstruction == null
+                || reconstruction.available(sceneProfile, renderer.surfaceWidth, renderer.surfaceHeight));
+    }
+
     /** Preferences are applied independently of HDR/manual color controls. */
     public synchronized void configureSpatialFilters(boolean fxaa, boolean fsr, int sharpness) {
         visualRevision++;
@@ -95,7 +145,8 @@ public class EffectComposer {
     public synchronized boolean hasEffects() {
         releasePendingBloomResources();
         releaseUnusedSpatialResources();
-        return gameFxaa || (gameFsr && canUseFsr()) || gameSharpness > 0 || !effects.isEmpty();
+        releaseChangedScene();
+        return canUseScene() || gameFxaa || (gameFsr && canUseFsr()) || gameSharpness > 0 || !effects.isEmpty();
     }
 
     /** Schedule resource destruction while the game surface's EGL context is current. */
@@ -208,6 +259,7 @@ public class EffectComposer {
             bufferWidth = renderer.surfaceWidth;
             bufferHeight = renderer.surfaceHeight;
             sourceFramebufferChecked = false;
+            sceneTargetsChecked = false;
             // These automatic programs and uniform locations also belong to the old context.
             if (!sameContext) { automaticFxaa = null; cas = rcas = null; copyMaterial = null; }
         }
@@ -225,7 +277,24 @@ public class EffectComposer {
 
     /** Render the processed scene into a separate real-frame history target. */
     public synchronized void renderToFramebuffer(int outputFramebuffer) {
+        boolean useScene = canUseScene();
+        if (useScene && readBuffer == null)
+            reconstructionOnlyBuffers = !gameFxaa && !gameFsr && gameSharpness == 0 && effects.isEmpty();
         initBuffers();
+        if (useScene && !sceneTargetsChecked) {
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, readBuffer.getFramebuffer());
+            sceneTargetsComplete = GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER) == GLES20.GL_FRAMEBUFFER_COMPLETE;
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, writeBuffer.getFramebuffer());
+            sceneTargetsComplete &= GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER) == GLES20.GL_FRAMEBUFFER_COMPLETE;
+            sceneTargetsChecked = true;
+            if (!sceneTargetsComplete) Log.w("TSOA_FE_DIAG", "Scene reconstruction bypassed: compositor framebuffer unavailable");
+        }
+        if (useScene && !sceneTargetsComplete) {
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, outputFramebuffer);
+            renderer.viewportNeedsUpdate = true;
+            renderer.drawFrame();
+            return;
+        }
         boolean fsrActive = false;
         int outWidth = renderer.isFullscreen() ? renderer.surfaceWidth : renderer.viewTransformation.viewWidth;
         int outHeight = renderer.isFullscreen() ? renderer.surfaceHeight : renderer.viewTransformation.viewHeight;
@@ -268,8 +337,18 @@ public class EffectComposer {
             frameEffects.add(cas);
         }
         frameEffects.addAll(effects);
+        // The input already has the fitted viewport (and EASU if active). Sharpening,
+        // color and Bloom consume the reconstructed real frame before FG records it.
+        boolean sceneDrawn = false;
+        if (useScene && outWidth > 0 && outHeight > 0) {
+            if (reconstruction == null) reconstruction = new SceneReconstruction();
+            int target = frameEffects.isEmpty() ? outputFramebuffer : writeBuffer.getFramebuffer();
+            sceneDrawn = reconstruction.draw(sceneProfile, genesisLevel, lumenLevel, renderer,
+                    readBuffer.getTextureId(), target, outX, outY, outWidth, outHeight);
+            if (sceneDrawn && !frameEffects.isEmpty()) swapBuffers();
+        }
         // FSR requested at native resolution: preserve normal output, with no false upscale.
-        if (frameEffects.isEmpty()) {
+        if (frameEffects.isEmpty() && !sceneDrawn) {
             if (copyMaterial == null) copyMaterial = new ScreenMaterial();
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, outputFramebuffer);
             GLES20.glViewport(0, 0, renderer.surfaceWidth, renderer.surfaceHeight);

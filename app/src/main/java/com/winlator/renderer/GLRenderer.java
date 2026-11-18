@@ -105,6 +105,8 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
         contentSerial++;
     }
 
+    synchronized long getSceneContentTime() { return contentTime; }
+
     private synchronized void snapshotSourceContent() {
         contentSnapshot[0] = contentSerial;
         contentSnapshot[1] = contentTime;

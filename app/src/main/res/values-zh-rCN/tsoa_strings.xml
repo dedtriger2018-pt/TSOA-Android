@@ -199,4 +199,22 @@
     <string name="tsoa_frame_generation">2× 帧生成（实验性）</string>
     <string name="tsoa_frame_generation_detail">根据游戏帧率和屏幕刷新率调整中间帧。会增加 GPU 负载，并可能增加延迟或产生重影。如果发生故障，本次游戏将关闭帧生成并继续正常运行。</string>
     <string name="tsoa_game_filters_detail">滤镜仅影响游戏，在打开或返回游戏时生效。同时启用多个效果会增加 GPU 负载；若流畅度下降，请关闭部分效果。</string>
+    <string name="tsoa_genesis">Genesis · 场景动态</string>
+    <string name="tsoa_lumen">Lumen · 光照</string>
+    <string name="tsoa_scene_low">低</string>
+    <string name="tsoa_scene_medium">中</string>
+    <string name="tsoa_scene_ultra">超高</string>
+    <string name="tsoa_scene_detail">请创建场景配置文件，或导入 .tscene 文件。识别出背景后，Genesis 会让标记区域产生动态效果，Lumen 会根据深度图和材质图为这些区域打光。</string>
+    <string name="tsoa_scene_checking">正在检查场景配置文件…</string>
+    <string name="tsoa_scene_missing">尚未安装场景配置文件。</string>
+    <string name="tsoa_scene_invalid">无法读取配置文件。请重新导入。</string>
+    <string name="tsoa_scene_ready">已安装配置文件 · 贴图尺寸 %1$d × %2$d</string>
+    <string name="tsoa_scene_import">导入场景配置文件</string>
+    <string name="tsoa_scene_remove">移除场景配置文件</string>
+    <string name="tsoa_scene_remove_message">从此设备移除场景配置文件？之后可以重新导入。</string>
+    <string name="tsoa_scene_removed">已移除场景配置文件。</string>
+    <string name="tsoa_scene_import_failed">请确认文件是有效的 .tscene 配置文件，且设备有可用空间。</string>
+    <string name="tsoa_scene_imported">已安装场景配置文件。请在视频设置中选择 Genesis 或 Lumen 的强度。</string>
+    <string name="tsoa_scene_create">创建场景配置文件</string>
+    <string name="tsoa_scene_editor_save">保存并使用此配置文件？</string>
 </resources>

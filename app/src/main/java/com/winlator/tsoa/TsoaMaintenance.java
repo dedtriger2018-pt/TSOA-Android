@@ -30,6 +30,7 @@ import java.util.zip.ZipOutputStream;
 
 /** User-initiated maintenance through Android's document picker; no storage permission needed. */
 public final class TsoaMaintenance {
+    private static final int IMPORT_SCENE = 85;
     private static final int EXPORT_SAVES = 82;
     private static final int IMPORT_SAVES = 83;
     private static final int EXPORT_DIAGNOSTICS = 84;
@@ -68,6 +69,23 @@ public final class TsoaMaintenance {
         createDocument(EXPORT_DIAGNOSTICS, "tsoa-diagnostico-" + timestamp() + ".zip");
     }
 
+    public void importScene() {
+        if (busy || closed) return;
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        startPicker(intent, IMPORT_SCENE);
+    }
+
+    public void removeScene() {
+        if (busy || closed) return;
+        showDialog(s(R.string.tsoa_scene_remove), s(R.string.tsoa_scene_remove_message),
+            s(R.string.tsoa_scene_remove), () -> execute(s(R.string.tsoa_scene_remove), () -> {
+                TsoaSceneStore.remove(activity);
+                return s(R.string.tsoa_scene_removed);
+            }));
+    }
+
     public void verifyFiles() {
         execute(s(R.string.tsoa_maintenance_verifying), () -> {
             File game = GameImportManager.getGameDirectory(activity);
@@ -86,10 +104,21 @@ public final class TsoaMaintenance {
     }
 
     public boolean onActivityResult(int requestCode, int resultCode, Intent data) {
-        if (requestCode != EXPORT_SAVES && requestCode != IMPORT_SAVES && requestCode != EXPORT_DIAGNOSTICS) return false;
+        if (requestCode != EXPORT_SAVES && requestCode != IMPORT_SAVES && requestCode != EXPORT_DIAGNOSTICS
+                && requestCode != IMPORT_SCENE) return false;
         if (resultCode != Activity.RESULT_OK || data == null || data.getData() == null) return true;
         Uri uri = data.getData();
-        if (requestCode == EXPORT_SAVES) execute(s(R.string.tsoa_maintenance_exporting_saves), () -> {
+        if (requestCode == IMPORT_SCENE) execute(s(R.string.tsoa_scene_checking), () -> {
+            try (InputStream input = activity.getContentResolver().openInputStream(uri)) {
+                if (input == null) throw new IOException();
+                TsoaSceneStore.install(activity, input);
+            } catch (IOException | SecurityException error) {
+                android.util.Log.w("TSOA_FE_DIAG", "Could not import scene profile", error);
+                throw new IOException(s(R.string.tsoa_scene_import_failed), error);
+            }
+            return s(R.string.tsoa_scene_imported);
+        });
+        else if (requestCode == EXPORT_SAVES) execute(s(R.string.tsoa_maintenance_exporting_saves), () -> {
             try (OutputStream output = activity.getContentResolver().openOutputStream(uri, "wt")) {
                 if (output == null) throw new IOException(s(R.string.tsoa_maintenance_cannot_open_file));
                 TsoaSaveArchive.write(new File(activity.getFilesDir(), SAVE_PATH), output);

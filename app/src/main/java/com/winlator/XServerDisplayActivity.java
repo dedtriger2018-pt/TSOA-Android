@@ -71,6 +71,7 @@ import com.winlator.math.Mathf;
 import com.winlator.renderer.GLRenderer;
 import com.winlator.services.ForegroundService;
 import com.winlator.tsoa.TsoaOptions;
+import com.winlator.tsoa.TsoaSceneSession;
 import com.winlator.tsoa.TsoaGameColor;
 import com.winlator.tsoa.TsoaGameControls;
 import com.winlator.tsoa.TsoaGameControlsView;
@@ -145,6 +146,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private String screenEffectProfile;
     private boolean dedicatedLauncherMode;
     private TsoaOptions tsoaOptions;
+    private TsoaSceneSession sceneSession;
     private int appliedGameHdrMode = -1;
     private Boolean appliedGameBloomEnabled;
 
@@ -329,6 +331,18 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 }
             }
         }
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        if (sceneSession != null) sceneSession.start();
+    }
+
+    @Override
+    protected void onStop() {
+        if (sceneSession != null) sceneSession.stop();
+        super.onStop();
     }
 
     @Override
@@ -686,6 +700,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
         xServer.setRenderer(renderer);
         if (dedicatedLauncherMode && "stretch".equals(tsoaOptions.getAspectMode())) renderer.toggleFullscreen();
+        if (dedicatedLauncherMode) sceneSession = new TsoaSceneSession(this, renderer.effectComposer);
         applyDedicatedGameColorOptions("setup");
         rootView.addView(xServerView);
 
