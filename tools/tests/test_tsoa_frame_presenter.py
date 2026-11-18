@@ -150,6 +150,7 @@ public final class GLRenderer {
         Trace.events.add("cursor");
     }
     public void logFrameGeneration(String text) {}
+    public void noteGeneratedFrame() {}
 }
 """,
 }

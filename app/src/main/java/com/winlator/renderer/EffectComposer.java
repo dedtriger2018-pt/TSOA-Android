@@ -42,6 +42,57 @@ public class EffectComposer {
     private boolean loggedFxaa, loggedFsr, loggedFsrActive;
     private int loggedSharpness = -1, loggedOutputWidth, loggedOutputHeight, loggedInputWidth, loggedInputHeight;
 
+    private boolean original, vignette, grain, presentationChanged;
+    private int cinematic, cinematicAmount, beyond, blur, saturation, qualityLimit = 3;
+    private PresentationEffects presentation;
+    private boolean presentationOnlyBuffers;
+
+    public synchronized void configurePresentation(boolean original, int cinematic, int cinematicAmount,
+            boolean vignette, boolean grain, int beyond, int blur, int saturation) {
+        if (this.original == original && this.cinematic == cinematic && this.cinematicAmount == cinematicAmount
+                && this.vignette == vignette && this.grain == grain && this.beyond == beyond
+                && this.blur == blur && this.saturation == saturation) return;
+        presentationChanged |= this.original != original || this.cinematic != cinematic
+                || (this.cinematicAmount > 0) != (cinematicAmount > 0)
+                || (this.beyond > 0) != (beyond > 0);
+        this.original = original;
+        this.cinematic = cinematic; this.cinematicAmount = cinematicAmount;
+        this.vignette = vignette; this.grain = grain;
+        this.beyond = beyond; this.blur = blur; this.saturation = saturation;
+        visualRevision++;
+        renderer.xServerView.queueEvent(this::releaseChangedPresentation);
+        renderer.xServerView.requestRender();
+    }
+
+    synchronized void setQualityLimit(int limit) {
+        if (limit == qualityLimit) return;
+        qualityLimit = limit;
+        visualRevision++;
+    }
+
+    private synchronized void releaseChangedPresentation() {
+        if (!presentationChanged || EGL14.eglGetCurrentContext().equals(EGL14.EGL_NO_CONTEXT)) return;
+        if (presentation != null) presentation.release();
+        presentation = null;
+        if (original || (presentationOnlyBuffers && (cinematic == 0 || cinematicAmount == 0) && beyond == 0 && !canUseScene()
+                && !gameFxaa && !gameFsr && gameSharpness == 0 && effects.isEmpty())) {
+            if (EGL14.eglGetCurrentContext().equals(bufferContext)) {
+                if (readBuffer != null) readBuffer.destroy();
+                if (writeBuffer != null) writeBuffer.destroy();
+            }
+            readBuffer = writeBuffer = null;
+            sourceFramebufferChecked = sceneTargetsChecked = false;
+            presentationOnlyBuffers = reconstructionOnlyBuffers = false;
+        }
+        presentationChanged = false;
+    }
+
+    private boolean canUseBeyond() {
+        return beyond > 0 && !renderer.isFullscreen()
+                && (renderer.viewTransformation.viewWidth < renderer.surfaceWidth
+                    || renderer.viewTransformation.viewHeight < renderer.surfaceHeight);
+    }
+
     private int genesisLevel, lumenLevel;
     private SceneReconstruction reconstruction;
     private boolean sceneChanged;
@@ -80,7 +131,7 @@ public class EffectComposer {
     }
 
     private boolean canUseScene() {
-        return (genesisLevel > 0 || lumenLevel > 0)
+        return !original && (genesisLevel > 0 || lumenLevel > 0)
                 && renderer.getMagnifierZoom() == 1f && !renderer.isScreenOffsetYRelativeToCursor()
                 && (reconstruction == null || reconstruction.available(renderer.surfaceWidth, renderer.surfaceHeight));
     }
@@ -141,7 +192,9 @@ public class EffectComposer {
         releasePendingBloomResources();
         releaseUnusedSpatialResources();
         releaseChangedScene();
-        return canUseScene() || gameFxaa || (gameFsr && canUseFsr()) || gameSharpness > 0 || !effects.isEmpty();
+        releaseChangedPresentation();
+        if (original) return false;
+        return (cinematic > 0 && cinematicAmount > 0) || canUseBeyond() || canUseScene() || gameFxaa || (gameFsr && canUseFsr()) || gameSharpness > 0 || !effects.isEmpty();
     }
 
     /** Schedule resource destruction while the game surface's EGL context is current. */
@@ -273,10 +326,14 @@ public class EffectComposer {
     /** Render the processed scene into a separate real-frame history target. */
     public synchronized void renderToFramebuffer(int outputFramebuffer) {
         boolean useScene = canUseScene();
+        boolean useCinematic = !original && cinematic > 0 && cinematicAmount > 0;
+        boolean useBeyond = !original && canUseBeyond();
+        if ((useCinematic || useBeyond) && readBuffer == null)
+            presentationOnlyBuffers = !useScene && !gameFxaa && !gameFsr && gameSharpness == 0 && effects.isEmpty();
         if (useScene && readBuffer == null)
             reconstructionOnlyBuffers = !gameFxaa && !gameFsr && gameSharpness == 0 && effects.isEmpty();
         initBuffers();
-        if (useScene && !sceneTargetsChecked) {
+        if ((useScene || useCinematic || useBeyond) && !sceneTargetsChecked) {
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, readBuffer.getFramebuffer());
             sceneTargetsComplete = GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER) == GLES20.GL_FRAMEBUFFER_COMPLETE;
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, writeBuffer.getFramebuffer());
@@ -284,7 +341,7 @@ public class EffectComposer {
             sceneTargetsChecked = true;
             if (!sceneTargetsComplete) Log.w("TSOA_FE_DIAG", "Scene reconstruction bypassed: compositor framebuffer unavailable");
         }
-        if (useScene && !sceneTargetsComplete) {
+        if ((useScene || useCinematic || useBeyond) && !sceneTargetsComplete) {
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, outputFramebuffer);
             renderer.viewportNeedsUpdate = true;
             renderer.drawFrame();
@@ -336,23 +393,32 @@ public class EffectComposer {
         // color and Bloom consume the reconstructed real frame before FG records it.
         if (useScene && outWidth > 0 && outHeight > 0) {
             if (reconstruction == null) reconstruction = new SceneReconstruction();
-            if (reconstruction.draw(genesisLevel, lumenLevel, renderer,
+            if (reconstruction.draw(Math.min(genesisLevel, qualityLimit), Math.min(lumenLevel, qualityLimit), renderer,
                     readBuffer.getTextureId(), writeBuffer, outX, outY, outWidth, outHeight)) swapBuffers();
         }
-        if (frameEffects.isEmpty()) {
-            if (copyMaterial == null) copyMaterial = new ScreenMaterial();
-            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, outputFramebuffer);
-            GLES20.glViewport(0, 0, renderer.surfaceWidth, renderer.surfaceHeight);
-            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
-            drawCopy();
-        }
+        if ((useCinematic || useBeyond) && (outWidth <= 0 || outHeight <= 0)) useCinematic = useBeyond = false;
+        if ((useCinematic || useBeyond) && presentation == null) presentation = new PresentationEffects();
+        if (useCinematic && presentation.draw(renderer, readBuffer, writeBuffer.getFramebuffer(),
+                outX, outY, outWidth, outHeight, true, Math.min(cinematic, qualityLimit),
+                cinematicAmount / 100f, vignette ? 1f : 0f, grain ? 1f : 0f)) swapBuffers();
         for (int i = 0; i < frameEffects.size(); i++) {
-            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, i + 1 < frameEffects.size() ? writeBuffer.getFramebuffer() : outputFramebuffer);
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, useBeyond || i + 1 < frameEffects.size()
+                    ? writeBuffer.getFramebuffer() : outputFramebuffer);
             GLES20.glViewport(0, 0, renderer.surfaceWidth, renderer.surfaceHeight);
             renderer.viewportNeedsUpdate = true;
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
             renderEffect(frameEffects.get(i));
             swapBuffers();
+        }
+        boolean borderDrawn = useBeyond && presentation.draw(renderer, readBuffer, outputFramebuffer,
+                outX, outY, outWidth, outHeight, false, qualityLimit,
+                beyond / 100f, blur / 100f, saturation / 100f);
+        if (!borderDrawn && (useBeyond || frameEffects.isEmpty())) {
+            if (copyMaterial == null) copyMaterial = new ScreenMaterial();
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, outputFramebuffer);
+            GLES20.glViewport(0, 0, renderer.surfaceWidth, renderer.surfaceHeight);
+            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+            drawCopy();
         }
         if (loggedFxaa != gameFxaa || loggedSharpness != gameSharpness || loggedFsr != gameFsr
                 || loggedFsrActive != fsrActive || loggedOutputWidth != outWidth || loggedOutputHeight != outHeight

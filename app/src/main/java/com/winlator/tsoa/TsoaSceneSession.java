@@ -28,10 +28,12 @@ public final class TsoaSceneSession implements SharedPreferences.OnSharedPrefere
     }
 
     @Override public void onSharedPreferenceChanged(SharedPreferences prefs, String key) {
-        if (key == null || TsoaOptions.GENESIS.equals(key) || TsoaOptions.LUMEN.equals(key)) apply();
+        if (key == null || "game_original".equals(key) || TsoaOptions.GENESIS.equals(key) || TsoaOptions.LUMEN.equals(key)) apply();
     }
 
     private void apply() {
-        composer.configureReconstruction(options.getGenesisLevel(), options.getLumenLevel());
+        boolean original = options.isOriginalMode();
+        composer.configureReconstruction(original ? 0 : options.getGenesisLevel(),
+                original ? 0 : options.getLumenLevel());
     }
 }

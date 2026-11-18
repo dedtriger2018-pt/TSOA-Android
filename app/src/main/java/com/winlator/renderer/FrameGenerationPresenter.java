@@ -164,7 +164,10 @@ public final class FrameGenerationPresenter {
             return false;
         }
         heldFraction = fraction;
-        if (presentation.draw && generate) generatedPresents++;
+        if (presentation.draw && generate) {
+            generatedPresents++;
+            renderer.noteGeneratedFrame();
+        }
         renderer.drawFrameGenerationCursor();
         renderer.viewportNeedsUpdate = true;
         if (nowNanos - lastDiagnostic >= 5_000_000_000L) {

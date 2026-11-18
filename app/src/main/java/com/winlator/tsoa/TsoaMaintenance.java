@@ -68,6 +68,72 @@ public final class TsoaMaintenance {
         createDocument(EXPORT_DIAGNOSTICS, "tsoa-diagnostico-" + timestamp() + ".zip");
     }
 
+    public void openChronos() {
+        if (busy || closed || new TsoaOptions(activity).isOriginalMode()) return;
+        ChronosStore store = new ChronosStore(new File(activity.getNoBackupFilesDir(), "chronos"));
+        java.util.ArrayList<ChronosStore.Point> points = store.list();
+        String head = TsoaOptions.prefs(activity).getString("chronos_head", "root");
+        String[] labels = new String[points.size()];
+        for (int i = 0; i < labels.length; i++) {
+            ChronosStore.Point point = points.get(i);
+            String label = pointDate(point.time);
+            if (!point.parent.equals("root"))
+                label = s(R.string.tsoa_chronos_edge, pointDate(Long.parseLong(point.parent.substring(0, 13))), label);
+            labels[i] = point.id.equals(head) ? s(R.string.tsoa_chronos_current, label) : label;
+        }
+        AlertDialog.Builder dialog = new AlertDialog.Builder(activity).setTitle(s(R.string.tsoa_chronos))
+                .setNegativeButton(s(R.string.tsoa_close), null)
+                .setPositiveButton(s(R.string.tsoa_chronos_new), (prompt, button) ->
+                        execute(s(R.string.tsoa_chronos_new), () -> withSaves(() -> {
+                            ChronosStore.Point point = store.create(saveDirectory(), head);
+                            TsoaOptions.prefs(activity).edit().putString("chronos_head", point.id).apply();
+                            return s(R.string.tsoa_chronos_created, pointDate(point.time));
+                        })));
+        if (labels.length == 0) dialog.setMessage(s(R.string.tsoa_chronos_empty));
+        else dialog.setItems(labels, (prompt, index) -> openPoint(store, points.get(index)));
+        dialog.show();
+    }
+
+    private void openPoint(ChronosStore store, ChronosStore.Point point) {
+        new AlertDialog.Builder(activity).setTitle(pointDate(point.time))
+                .setMessage(s(R.string.tsoa_chronos_restore_confirm))
+                .setPositiveButton(s(R.string.tsoa_chronos_restore), (prompt, button) ->
+                        execute(s(R.string.tsoa_maintenance_restoring_saves), () -> withSaves(() -> {
+                            File backup = store.restore(saveDirectory(), point);
+                            TsoaOptions.prefs(activity).edit().putString("chronos_head", point.id).apply();
+                            return s(R.string.tsoa_maintenance_saves_restored) + (backup == null ? ""
+                                    : s(R.string.tsoa_maintenance_previous_backup, backup.getName()));
+                        })))
+                .setNeutralButton(s(R.string.tsoa_chronos_delete), (prompt, button) ->
+                        showDialog(s(R.string.tsoa_chronos_delete), s(R.string.tsoa_chronos_delete_confirm),
+                                s(R.string.tsoa_chronos_delete), () ->
+                                        execute(s(R.string.tsoa_chronos_delete), () -> {
+                                            store.delete(point);
+                                            if (point.id.equals(TsoaOptions.prefs(activity).getString("chronos_head", "")))
+                                                TsoaOptions.prefs(activity).edit().putString("chronos_head", point.parent).apply();
+                                            return s(R.string.tsoa_chronos_deleted);
+                                        })))
+                .setNegativeButton(s(R.string.tsoa_cancel), null).show();
+    }
+
+    private String withSaves(Job job) throws Exception {
+        try {
+            TsoaSaveAccess.beginMaintenance();
+        } catch (IOException activeGame) {
+            return s(R.string.tsoa_chronos_close_game);
+        }
+        try { return job.run(); }
+        finally { TsoaSaveAccess.endMaintenance(); }
+    }
+
+    private File saveDirectory() { return new File(activity.getFilesDir(), SAVE_PATH); }
+
+    private String pointDate(long time) {
+        return java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,
+                java.text.DateFormat.MEDIUM, TsoaMenuLanguage.context(activity).getResources()
+                        .getConfiguration().getLocales().get(0)).format(new Date(time));
+    }
+
     public void verifyFiles() {
         execute(s(R.string.tsoa_maintenance_verifying), () -> {
             File game = GameImportManager.getGameDirectory(activity);
@@ -89,21 +155,22 @@ public final class TsoaMaintenance {
         if (requestCode != EXPORT_SAVES && requestCode != IMPORT_SAVES && requestCode != EXPORT_DIAGNOSTICS) return false;
         if (resultCode != Activity.RESULT_OK || data == null || data.getData() == null) return true;
         Uri uri = data.getData();
-        if (requestCode == EXPORT_SAVES) execute(s(R.string.tsoa_maintenance_exporting_saves), () -> {
+        if (requestCode == EXPORT_SAVES) execute(s(R.string.tsoa_maintenance_exporting_saves), () -> withSaves(() -> {
             try (OutputStream output = activity.getContentResolver().openOutputStream(uri, "wt")) {
                 if (output == null) throw new IOException(s(R.string.tsoa_maintenance_cannot_open_file));
                 TsoaSaveArchive.write(new File(activity.getFilesDir(), SAVE_PATH), output);
             }
             return s(R.string.tsoa_maintenance_saves_exported);
-        });
-        else if (requestCode == IMPORT_SAVES) execute(s(R.string.tsoa_maintenance_restoring_saves), () -> {
+        }));
+        else if (requestCode == IMPORT_SAVES) execute(s(R.string.tsoa_maintenance_restoring_saves), () -> withSaves(() -> {
             File backup;
             try (InputStream input = activity.getContentResolver().openInputStream(uri)) {
                 if (input == null) throw new IOException(s(R.string.tsoa_maintenance_cannot_read_backup));
-                backup = TsoaSaveArchive.restore(new File(activity.getFilesDir(), SAVE_PATH), input);
+                backup = TsoaSaveArchive.restore(saveDirectory(), input);
+                TsoaOptions.prefs(activity).edit().remove("chronos_head").apply();
             }
             return s(R.string.tsoa_maintenance_saves_restored) + (backup == null ? "" : s(R.string.tsoa_maintenance_previous_backup, backup.getName()));
-        });
+        }));
         else execute(s(R.string.tsoa_maintenance_exporting_diagnostics), () -> {
             try (OutputStream output = activity.getContentResolver().openOutputStream(uri, "wt")) {
                 if (output == null) throw new IOException(s(R.string.tsoa_maintenance_cannot_open_file));

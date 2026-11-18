@@ -34,6 +34,8 @@ public final class TsoaOptionsDialog {
         void editControls();
         void resetControls();
         void importGame();
+        void openChronos();
+        void openPda();
         void exportSaves();
         void importSaves();
         void verifyFiles();
@@ -154,6 +156,7 @@ public final class TsoaOptionsDialog {
     }
 
     private void video() {
+        toggle(s(R.string.tsoa_original), s(R.string.tsoa_original_detail), "game_original", options.isOriginalMode());
         String[] all = activity.getResources().getStringArray(R.array.screen_size_entries);
         String[] labels = Arrays.copyOfRange(all, 1, all.length);
         labels[0] = s(R.string.tsoa_native_resolution);
@@ -184,6 +187,16 @@ public final class TsoaOptionsDialog {
         intChoice(s(R.string.tsoa_genesis), TsoaOptions.GENESIS, levels, valuesByLevel, options.getGenesisLevel());
         intChoice(s(R.string.tsoa_lumen), TsoaOptions.LUMEN, levels, valuesByLevel, options.getLumenLevel());
         note(s(R.string.tsoa_scene_detail));
+        intChoice(s(R.string.tsoa_cinematic), "game_cinematic", levels, valuesByLevel, options.getCinematicLevel());
+        slider(s(R.string.tsoa_cinematic_amount), "game_cinematic_amount", 0, 100, options.getCinematicAmount(), false, "%");
+        toggle(s(R.string.tsoa_cinematic_vignette), "", "game_cinematic_vignette", options.isCinematicVignette());
+        toggle(s(R.string.tsoa_cinematic_grain), "", "game_cinematic_grain", options.isCinematicGrain());
+        slider(s(R.string.tsoa_beyond), "game_beyond", 0, 100, options.getBeyondAmount(), false, "%");
+        note(s(R.string.tsoa_beyond_detail));
+        slider(s(R.string.tsoa_beyond_blur), "game_beyond_blur", 0, 100, options.getBeyondBlur(), false, "%");
+        slider(s(R.string.tsoa_beyond_saturation), "game_beyond_saturation", 0, 100, options.getBeyondSaturation(), false, "%");
+        toggle(s(R.string.tsoa_adaptive), s(R.string.tsoa_adaptive_detail), "game_adaptive", options.isAdaptiveQuality());
+        toggle(s(R.string.tsoa_perf), s(R.string.tsoa_perf_detail), "game_performance", options.isPerformanceVisible());
         note(s(R.string.tsoa_game_filters_detail));
         note(s(R.string.tsoa_resolution_detail));
     }
@@ -253,6 +266,11 @@ public final class TsoaOptionsDialog {
     }
 
     private void files() {
+        toggle(s(R.string.tsoa_pda), s(R.string.tsoa_pda_detail), "game_pda", options.isPdaEnabled());
+        if (!options.isOriginalMode()) {
+            action(s(R.string.tsoa_pda_browse), null, actions::openPda, true);
+            action(s(R.string.tsoa_chronos), s(R.string.tsoa_chronos_detail), actions::openChronos, true);
+        }
         action(s(R.string.tsoa_export_saves), s(R.string.tsoa_export_saves_detail), actions::exportSaves, true);
         action(s(R.string.tsoa_import_saves), s(R.string.tsoa_import_saves_detail), actions::importSaves, true);
         action(s(R.string.tsoa_verify_files), s(R.string.tsoa_verify_files_detail), actions::verifyFiles, true);
@@ -333,7 +351,7 @@ public final class TsoaOptionsDialog {
             changed();
         });
         content.addView(control, new LinearLayout.LayoutParams(-1, -2));
-        note(detail);
+        if (!detail.isEmpty()) note(detail);
     }
 
     private void slider(String label, String key, int min, int max, int value, boolean fraction, String suffix) {

@@ -72,6 +72,9 @@ import com.winlator.renderer.GLRenderer;
 import com.winlator.services.ForegroundService;
 import com.winlator.tsoa.TsoaOptions;
 import com.winlator.tsoa.TsoaSceneSession;
+import com.winlator.tsoa.TsoaJournal;
+import com.winlator.tsoa.TsoaSaveAccess;
+import com.winlator.tsoa.TsoaPerformanceMonitor;
 import com.winlator.tsoa.TsoaGameColor;
 import com.winlator.tsoa.TsoaGameControls;
 import com.winlator.tsoa.TsoaGameControlsView;
@@ -147,6 +150,9 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private boolean dedicatedLauncherMode;
     private TsoaOptions tsoaOptions;
     private TsoaSceneSession sceneSession;
+    private TsoaPerformanceMonitor performanceMonitor;
+    private boolean ownsSaveSession;
+    private android.widget.Button pdaButton;
     private int appliedGameHdrMode = -1;
     private Boolean appliedGameBloomEnabled;
 
@@ -284,6 +290,14 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             }
         });
 
+        if (dedicatedLauncherMode) {
+            ownsSaveSession = TsoaSaveAccess.startGame();
+            if (!ownsSaveSession) {
+                AppUtils.showToast(this, com.winlator.tsoa.TsoaMenuLanguage.get(this, R.string.tsoa_wait_for_saves));
+                finish();
+                return;
+            }
+        }
         setupUI();
 
         Executors.newSingleThreadExecutor().execute(() -> {
@@ -354,11 +368,15 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             xServerView.onResume();
             environment.onResume();
         }
+        if (performanceMonitor != null) performanceMonitor.start(tsoaOptions);
+        if (pdaButton != null) pdaButton.setVisibility(tsoaOptions.isPdaEnabled() && !tsoaOptions.isOriginalMode()
+                ? View.VISIBLE : View.GONE);
         ForegroundService.onResumeSession(this);
     }
 
     @Override
     public void onPause() {
+        if (performanceMonitor != null) performanceMonitor.stop();
         ForegroundService.onPauseSession(this);
         super.onPause();
         if (environment != null && !isInPictureInPictureMode()) {
@@ -377,6 +395,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     protected void onDestroy() {
         winHandler.stop();
         if (environment != null) environment.stopEnvironmentComponents();
+        if (ownsSaveSession) {
+            ownsSaveSession = false;
+            TsoaSaveAccess.endGame();
+        }
         ForegroundService.stopSession(this);
         super.onDestroy();
     }
@@ -652,7 +674,12 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
     private void applyDedicatedGameColorOptions(String source) {
         if (!dedicatedLauncherMode || tsoaOptions == null || xServerView == null) return;
-        int mode = tsoaOptions.getGameHdrMode();
+        boolean original = tsoaOptions.isOriginalMode();
+        xServerView.getRenderer().effectComposer.configurePresentation(original,
+                tsoaOptions.getCinematicLevel(), tsoaOptions.getCinematicAmount(), tsoaOptions.isCinematicVignette(),
+                tsoaOptions.isCinematicGrain(), tsoaOptions.getBeyondAmount(),
+                tsoaOptions.getBeyondBlur(), tsoaOptions.getBeyondSaturation());
+        int mode = original ? 0 : tsoaOptions.getGameHdrMode();
         // A singleTask game activity may be resumed after a lobby setting changes.
         // Keep manual screen effects intact when the lobby preference is unchanged.
         if (mode != appliedGameHdrMode) {
@@ -663,7 +690,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             TsoaRedirectorV2Log.append(this, diagnostic);
             appliedGameHdrMode = mode;
         }
-        boolean bloom = tsoaOptions.isGameBloomEnabled();
+        boolean bloom = !original && tsoaOptions.isGameBloomEnabled();
         if (appliedGameBloomEnabled == null || bloom != appliedGameBloomEnabled) {
             TsoaGameColor.applyBloom(xServerView.getRenderer(), bloom);
             String diagnostic = "Game bloom preference applied: source=" + source +
@@ -672,15 +699,15 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             TsoaRedirectorV2Log.append(this, diagnostic);
             appliedGameBloomEnabled = bloom;
         }
-        boolean fxaa = tsoaOptions.isGameFxaaEnabled();
-        boolean fsr = tsoaOptions.isGameFsrEnabled();
-        int sharpness = tsoaOptions.getGameSharpeningStrength();
+        boolean fxaa = !original && tsoaOptions.isGameFxaaEnabled();
+        boolean fsr = !original && tsoaOptions.isGameFsrEnabled();
+        int sharpness = original ? 0 : tsoaOptions.getGameSharpeningStrength();
         String spatialOptions = fxaa + ":" + fsr + ":" + sharpness;
         if (!spatialOptions.equals(appliedGameSpatialOptions)) {
             xServerView.getRenderer().effectComposer.configureSpatialFilters(fxaa, fsr, sharpness);
             appliedGameSpatialOptions = spatialOptions;
         }
-        boolean frameGeneration = tsoaOptions.isGameFrameGenerationEnabled();
+        boolean frameGeneration = !original && tsoaOptions.isGameFrameGenerationEnabled();
         if (appliedGameFrameGeneration == null || frameGeneration != appliedGameFrameGeneration
                 || (frameGeneration && "resume".equals(source))) {
             xServerView.setFrameGenerationEnabled(frameGeneration);
@@ -703,6 +730,18 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         if (dedicatedLauncherMode) sceneSession = new TsoaSceneSession(this, renderer.effectComposer);
         applyDedicatedGameColorOptions("setup");
         rootView.addView(xServerView);
+        if (dedicatedLauncherMode) {
+            performanceMonitor = new TsoaPerformanceMonitor(this, renderer, rootView);
+            if (tsoaOptions.isPdaEnabled()) {
+                pdaButton = new android.widget.Button(this);
+                pdaButton.setText("PDA");
+                pdaButton.setAllCaps(false);
+                pdaButton.setTextSize(12);
+                pdaButton.setAlpha(0.78f);
+                pdaButton.setVisibility(View.GONE);
+                pdaButton.setOnClickListener(view -> TsoaJournal.open(this, xServerView));
+            }
+        }
 
         globalCursorSpeed = preferences.getFloat("cursor_speed", 1.0f);
         capturePointerOnExternalMouse = preferences.getBoolean("capture_pointer_on_external_mouse", true);
@@ -746,6 +785,12 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
         if (MainActivity.DEBUG_MODE) rootView.addView(AppUtils.createDebugMsgTextView(this));
         AppUtils.observeSoftKeyboardVisibility(drawerLayout, renderer::setScreenOffsetYRelativeToCursor);
+        if (pdaButton != null) {
+            int density48 = Math.round(48 * getResources().getDisplayMetrics().density);
+            FrameLayout.LayoutParams bounds = new FrameLayout.LayoutParams(density48 * 3 / 2, density48,
+                    android.view.Gravity.TOP | android.view.Gravity.END);
+            rootView.addView(pdaButton, bounds);
+        }
     }
 
     private void applyDedicatedInputOptions() {

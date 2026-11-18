@@ -267,6 +267,14 @@ public class TsoaGameColorCheck {
 # Trace the actual Java helper/composer without an Android runtime. The separate
 # GLES runner checks the exact production shaders on a real surfaceless context.
 LIFECYCLE_STUBS = {
+    "com/winlator/renderer/PresentationEffects.java": """
+package com.winlator.renderer;
+class PresentationEffects {
+    public void release() {}
+    public boolean draw(GLRenderer r,RenderTarget input,int output,int x,int y,int w,int h,
+                        boolean cine,int quality,float amount,float first,float second) {return false;}
+}
+""",
     "com/winlator/renderer/SceneReconstruction.java": """
 package com.winlator.renderer;
 class SceneReconstruction {

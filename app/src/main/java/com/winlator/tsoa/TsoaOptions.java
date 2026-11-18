@@ -59,6 +59,23 @@ public final class TsoaOptions {
         return level >= 1 && level <= 3 ? level : 0;
     }
 
+    public boolean isOriginalMode() { return enabled("game_original"); }
+    public boolean isAdaptiveQuality() { return enabled("game_adaptive"); }
+    public boolean isPerformanceVisible() { return enabled("game_performance"); }
+    public boolean isPdaEnabled() { return enabled("game_pda"); }
+    public int getCinematicLevel() { return getSceneLevel("game_cinematic"); }
+    public int getCinematicAmount() { return percent("game_cinematic_amount", 75); }
+    public boolean isCinematicVignette() { return enabled("game_cinematic_vignette"); }
+    public boolean isCinematicGrain() { return enabled("game_cinematic_grain"); }
+    public int getBeyondAmount() { return percent("game_beyond", 0); }
+    public int getBeyondBlur() { return percent("game_beyond_blur", 65); }
+    public int getBeyondSaturation() { return percent("game_beyond_saturation", 65); }
+
+    private boolean enabled(String key) { return preferences.getBoolean(key, false); }
+    private int percent(String key, int fallback) {
+        return Math.max(0, Math.min(100, preferences.getInt(key, fallback)));
+    }
+
     public int getFpsLimit() {
         int value = preferences.getInt("fps_limit", 0);
         return value == 30 || value == 60 ? value : 0;

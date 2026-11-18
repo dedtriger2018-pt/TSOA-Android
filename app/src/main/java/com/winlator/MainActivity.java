@@ -470,6 +470,8 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                 }
             }
             @Override public void resetControls() { TsoaGameControls.resetSelectedLayout(MainActivity.this); }
+            @Override public void openChronos() { if (canMaintainGame()) maintenance.openChronos(); }
+            @Override public void openPda() { com.winlator.tsoa.TsoaJournal.open(MainActivity.this, null); }
             @Override public void importGame() { if (canMaintainGame()) openGameFolderPicker(); }
             @Override public void exportSaves() { if (canMaintainGame()) maintenance.exportSaves(); }
             @Override public void importSaves() { if (canMaintainGame()) maintenance.importSaves(); }
@@ -479,7 +481,8 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     }
 
     private boolean canMaintainGame() {
-        if (rootFSReady && !launcherBusy && !gameLaunchActive && !importInProgress && !maintenance.isBusy()) return true;
+        if (rootFSReady && !launcherBusy && !gameLaunchActive && !importInProgress && !maintenance.isBusy()
+                && !com.winlator.tsoa.TsoaSaveAccess.gameRunning()) return true;
         AppUtils.showToast(this, menuString(R.string.tsoa_wait_before_files));
         return false;
     }

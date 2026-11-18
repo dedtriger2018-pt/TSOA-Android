@@ -71,6 +71,21 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     private volatile long frameGenerationVsync;
     private volatile FrameGenerationPresenter framePresenter;
     private boolean omitCursorFromScene;
+    private volatile GraphicsBudget graphicsBudget;
+
+    public void configureBudget(boolean adaptive, boolean visible) {
+        GraphicsBudget current = graphicsBudget;
+        if (!adaptive && !visible) graphicsBudget = null;
+        else if (current == null || current.isAdaptive() != adaptive) graphicsBudget = new GraphicsBudget(adaptive);
+        if (!adaptive) effectComposer.setQualityLimit(3);
+    }
+
+    public GraphicsBudget getGraphicsBudget() { return graphicsBudget; }
+
+    void noteGeneratedFrame() {
+        GraphicsBudget budget = graphicsBudget;
+        if (budget != null) budget.noteGenerated();
+    }
     private long contentSerial = 1, contentTime = System.nanoTime();
     private final long[] contentSnapshot = new long[2];
 
@@ -188,6 +203,21 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 
     @Override
     public void onDrawFrame(GL10 gl) {
+        GraphicsBudget budget = graphicsBudget;
+        if (budget == null) {
+            drawGameFrame();
+            return;
+        }
+        long start = System.nanoTime();
+        try { drawGameFrame(); }
+        finally {
+            long now = System.nanoTime();
+            int limit = budget.frame(now, getSceneContentTime(), now - start, frameGenerationDisplayPeriod);
+            if (graphicsBudget == budget) effectComposer.setQualityLimit(limit);
+        }
+    }
+
+    private void drawGameFrame() {
         if (toggleFullscreen) {
             fullscreen = !fullscreen;
             toggleFullscreen = false;
