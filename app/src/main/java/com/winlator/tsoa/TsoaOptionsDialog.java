@@ -191,9 +191,13 @@ public final class TsoaOptionsDialog {
         slider(s(R.string.tsoa_cinematic_amount), "game_cinematic_amount", 0, 100, options.getCinematicAmount(), false, "%");
         toggle(s(R.string.tsoa_cinematic_vignette), "", "game_cinematic_vignette", options.isCinematicVignette());
         toggle(s(R.string.tsoa_cinematic_grain), "", "game_cinematic_grain", options.isCinematicGrain());
+        intChoice("Beyond Screen", "game_beyond_mode", new String[]{
+                s(R.string.tsoa_off), s(R.string.tsoa_beyond_black), s(R.string.tsoa_beyond_ambient)},
+                new int[]{0, 1, 2}, options.getBeyondMode());
         slider(s(R.string.tsoa_beyond), "game_beyond", 0, 100, options.getBeyondAmount(), false, "%");
         note(s(R.string.tsoa_beyond_detail));
         slider(s(R.string.tsoa_beyond_blur), "game_beyond_blur", 0, 100, options.getBeyondBlur(), false, "%");
+        slider(s(R.string.tsoa_beyond_brightness), "game_beyond_brightness", 0, 100, options.getBeyondBrightness(), false, "%");
         slider(s(R.string.tsoa_beyond_saturation), "game_beyond_saturation", 0, 100, options.getBeyondSaturation(), false, "%");
         toggle(s(R.string.tsoa_adaptive), s(R.string.tsoa_adaptive_detail), "game_adaptive", options.isAdaptiveQuality());
         toggle(s(R.string.tsoa_perf), s(R.string.tsoa_perf_detail), "game_performance", options.isPerformanceVisible());

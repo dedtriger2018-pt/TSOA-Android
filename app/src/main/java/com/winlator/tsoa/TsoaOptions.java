@@ -67,7 +67,12 @@ public final class TsoaOptions {
     public int getCinematicAmount() { return percent("game_cinematic_amount", 75); }
     public boolean isCinematicVignette() { return enabled("game_cinematic_vignette"); }
     public boolean isCinematicGrain() { return enabled("game_cinematic_grain"); }
-    public int getBeyondAmount() { return percent("game_beyond", 0); }
+    public int getBeyondMode() {
+        int mode = preferences.getInt("game_beyond_mode", percent("game_beyond", 0) > 0 ? 2 : 0);
+        return mode >= 0 && mode <= 2 ? mode : 0;
+    }
+    public int getBeyondBrightness() { return percent("game_beyond_brightness", 72); }
+    public int getBeyondAmount() { return percent("game_beyond", 62); }
     public int getBeyondBlur() { return percent("game_beyond_blur", 65); }
     public int getBeyondSaturation() { return percent("game_beyond_saturation", 65); }
 

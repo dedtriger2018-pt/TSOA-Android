@@ -250,4 +250,7 @@
     <string name="tsoa_chronos_deleted">Checkpoint apagado.</string>
     <string name="tsoa_chronos_delete_confirm">Apagar este checkpoint? Pontos com ramificações ficam protegidos.</string>
     <string name="tsoa_chronos_close_game">Feche o jogo antes de alterar ou copiar os saves.</string>
+    <string name="tsoa_beyond_black">Borda preta</string>
+    <string name="tsoa_beyond_ambient">Blur ambiental</string>
+    <string name="tsoa_beyond_brightness">Brilho das bordas</string>
 </resources>

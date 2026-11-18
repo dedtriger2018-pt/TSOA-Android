@@ -15,8 +15,9 @@ final class SceneReconstruction {
     private final int[] linkStatus = new int[1];
     private final ByteBuffer pixels = ByteBuffer.allocateDirect(PROBE_WIDTH * PROBE_HEIGHT * 4);
     private EGLContext context;
-    private RenderTarget reference, nextReference, structure, nextStructure, score, probe;
-    private Pass capture, recognize, estimate, reconstruct, measure;
+    private RenderTarget reference, nextReference, structure, nextStructure, score, probe, smart, nextSmart;
+    private Pass capture, recognize, estimate, reconstruct, measure, estimateLumen;
+    private boolean lumenReady;
     private int surfaceWidth, surfaceHeight, viewX, viewY, viewWidth, viewHeight, mapWidth, mapHeight;
     private long lastSource, lastAnalysis, lastProbe;
     private int analyses, frames;
@@ -25,6 +26,7 @@ final class SceneReconstruction {
     private static final class Pass extends ScreenMaterial {
         private final String fragment;
         final Uniform reference = new Uniform("referenceTexture"), structure = new Uniform("structureTexture");
+        final Uniform smart = new Uniform("smartTexture");
         final Uniform score = new Uniform("scoreTexture"), origin = new Uniform("viewOrigin");
         final Uniform extent = new Uniform("viewExtent"), step = new Uniform("mapStep");
         final Uniform levels = new Uniform("levels"), phase = new Uniform("phase"), history = new Uniform("history");
@@ -105,6 +107,25 @@ final class SceneReconstruction {
         render();
     }
 
+    private void prepareLumen() {
+        estimateLumen = new Pass(SceneShaders.lumenMap());
+        compile(estimateLumen);
+        smart = new RenderTarget(); nextSmart = new RenderTarget();
+        allocate(smart, mapWidth, mapHeight); allocate(nextSmart, mapWidth, mapHeight);
+    }
+
+    private void analyzeLumen() {
+        prepare(estimateLumen, nextSmart, mapWidth, mapHeight, reference.getTextureId(),
+                0, structure.getTextureId(), score.getTextureId());
+        estimateLumen.setUniformInt(estimateLumen.smart, 4);
+        estimateLumen.setUniformFloat(estimateLumen.history, lumenReady ? 1f : 0f);
+        bind(4, smart.getTextureId());
+        render();
+        RenderTarget oldSmart = smart;
+        smart = nextSmart; nextSmart = oldSmart;
+        lumenReady = true;
+    }
+
     private void analyze(int input) {
         prepare(capture, nextReference, mapWidth, mapHeight, input, 0, 0, 0);
         render();
@@ -157,6 +178,7 @@ final class SceneReconstruction {
         try {
             GLES20.glDisable(GLES20.GL_BLEND);
             if (capture == null) initialize();
+            if (lumen > 0 && estimateLumen == null) prepareLumen();
             long time = renderer.getSceneContentTime();
             boolean fresh = frames == 0 || time != lastSource;
             if (fresh) {
@@ -168,6 +190,7 @@ final class SceneReconstruction {
                 long interval = analyses < 3 ? 48_000_000L : 166_000_000L - quality * 26_000_000L;
                 if (!previous || age >= interval || age < 0) {
                     analyze(input);
+                    if (lumen > 0) analyzeLumen();
                     lastAnalysis = time;
                     if (!previous) recognize(input, true);
                 }
@@ -175,8 +198,11 @@ final class SceneReconstruction {
                 frames++;
             }
 
+            if (lumen > 0 && !lumenReady) analyzeLumen();
             prepare(reconstruct, output, surfaceWidth, surfaceHeight, input, reference.getTextureId(),
                     structure.getTextureId(), score.getTextureId());
+            reconstruct.setUniformInt(reconstruct.smart, 4);
+            bind(4, lumen > 0 ? smart.getTextureId() : 0);
             reconstruct.setUniformVec2(reconstruct.levels, genesis, lumen);
             reconstruct.setUniformFloat(reconstruct.phase,
                     (float)((time % 9_000_000_000L) * (2.0 * Math.PI / 9_000_000_000.0)));
@@ -196,7 +222,7 @@ final class SceneReconstruction {
             renderer.logGraphics("Scene GPU bypassed: " + unavailable.getMessage());
             return false;
         } finally {
-            for (int i = 3; i >= 0; i--) bind(i, 0);
+            for (int i = 4; i >= 0; i--) bind(i, 0);
             if (blend) GLES20.glEnable(GLES20.GL_BLEND);
             renderer.viewportNeedsUpdate = true;
         }
@@ -204,13 +230,14 @@ final class SceneReconstruction {
 
     void release() {
         if (context != null && context.equals(EGL14.eglGetCurrentContext())) {
-            for (RenderTarget target : new RenderTarget[]{reference, nextReference, structure, nextStructure, score, probe})
+            for (RenderTarget target : new RenderTarget[]{reference, nextReference, structure, nextStructure, score, probe, smart, nextSmart})
                 if (target != null) target.destroy();
-            for (Pass pass : new Pass[]{capture, recognize, estimate, reconstruct, measure})
+            for (Pass pass : new Pass[]{capture, recognize, estimate, reconstruct, measure, estimateLumen})
                 if (pass != null) pass.destroy();
         }
-        reference = nextReference = structure = nextStructure = score = probe = null;
-        capture = recognize = estimate = reconstruct = measure = null;
+        reference = nextReference = structure = nextStructure = score = probe = smart = nextSmart = null;
+        capture = recognize = estimate = reconstruct = measure = estimateLumen = null;
+        lumenReady = false;
         context = null;
         frames = analyses = 0;
         failed = false;

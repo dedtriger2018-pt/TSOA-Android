@@ -55,29 +55,48 @@ final class PresentationShaders {
                 "}");
     }
 
-    static String borderShader() {
+    static String ambientCaptureShader() {
         return HEADER + String.join("\n", "",
+                "uniform vec2 stepUV;",
                 "void main() {",
-                "    vec4 src=texture(screenTexture,vUV); outFragColor=src;",
-                "    vec2 p=(vUV-origin)/extent;",
-                "    if(all(greaterThanEqual(p,vec2(0)))&&all(lessThan(p,vec2(1)))) return;",
-                "    vec2 q=clamp(p,vec2(0),vec2(1));",
-                "    bool side=abs(p.x-q.x)>abs(p.y-q.y);",
-                "    float across=side ? q.x : q.y;",
-                "    vec2 center=side ? vec2(across*0.84+0.08,q.y) : vec2(q.x,across*0.84+0.08);",
-                "    vec2 stepUV=(side ? vec2(0,1) : vec2(1,0))*(0.045+0.115*style.x);",
-                "    vec3 color=vec3(0); float weight=0.0;",
-                "    for(int i=-3;i<=3;++i) {",
-                "        if(abs(i)>int(grade.y)) continue;",
-                "        float w=4.0-float(abs(i));",
-                "        vec2 uv=origin+extent*clamp(center+stepUV*float(i),vec2(0.014),vec2(0.986));",
-                "        color+=texture(screenTexture,uv).rgb*w; weight+=w;",
+                "    vec3 color=vec3(0);",
+                "    for(int y=-1;y<=1;++y) for(int x=-1;x<=1;++x) {",
+                "        vec2 p=clamp(vUV+stepUV*vec2(x,y),stepUV*1.5,1.0-stepUV*1.5);",
+                "        color+=texture(screenTexture,origin+p*extent).rgb;",
                 "    }",
-                "    color/=weight;",
-                "    color=mix(vec3(lum(color)),color,style.y);",
-                "    float falloff=exp(-5.2*length(p-q));",
-                "    outFragColor=vec4(clamp(color*grade.x*0.71*falloff,0.0,1.0),1);",
+                "    outFragColor=vec4(color/9.0,1);",
                 "}");
     }
 
+    static String ambientGaussianShader() {
+        return HEADER + String.join("\n", "",
+                "uniform vec2 stepUV;",
+                "void main() {",
+                "    vec3 color=vec3(0.0); float total=0.0;",
+                "    for(int i=-12;i<=12;++i) {",
+                "        float x=float(i); float w=exp(-0.5*x*x/(smoothing*smoothing));",
+                "        color+=texture(screenTexture,vUV+stepUV*x).rgb*w; total+=w;",
+                "    }",
+                "    outFragColor=vec4(color/total,1);",
+                "}");
+    }
+
+    static String borderShader() {
+        return HEADER + String.join("\n", "",
+                "void main() {",
+                "    outFragColor=texture(screenTexture,vUV);",
+                "    vec2 p=(vUV-origin)/extent;",
+                "    if(all(greaterThanEqual(p,vec2(0)))&&all(lessThan(p,vec2(1)))) return;",
+                "    if(grade.x<=0.0 || style.x<=0.0) { outFragColor=vec4(0,0,0,1); return; }",
+                "    vec2 edge=clamp(p,0.0,1.0);",
+                "    vec2 spill=p-edge;",
+                // Mirror inward gradually. The entire source patch has already been blurred in both axes.
+                "    vec2 reflected=clamp(edge-0.76*spill,0.0,1.0);",
+                "    reflected=mix(vec2(0.5),reflected,0.87);",
+                "    vec3 color=texture(statistics,reflected).rgb;",
+                "    color=mix(vec3(lum(color)),color,style.y);",
+                "    float falloff=1.0-0.56*smoothstep(0.0,0.65,length(spill));",
+                "    outFragColor=vec4(clamp(color*grade.x*style.x*falloff,0.0,1.0),1);",
+                "}");
+    }
 }

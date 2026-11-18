@@ -43,22 +43,23 @@ public class EffectComposer {
     private int loggedSharpness = -1, loggedOutputWidth, loggedOutputHeight, loggedInputWidth, loggedInputHeight;
 
     private boolean original, vignette, grain, presentationChanged;
-    private int cinematic, cinematicAmount, beyond, blur, saturation, qualityLimit = 3;
+    private int cinematic, cinematicAmount, beyondMode, beyond, blur, brightness, saturation, qualityLimit = 3;
     private PresentationEffects presentation;
     private boolean presentationOnlyBuffers;
 
     public synchronized void configurePresentation(boolean original, int cinematic, int cinematicAmount,
-            boolean vignette, boolean grain, int beyond, int blur, int saturation) {
+            boolean vignette, boolean grain, int beyondMode, int beyond, int blur, int brightness, int saturation) {
         if (this.original == original && this.cinematic == cinematic && this.cinematicAmount == cinematicAmount
-                && this.vignette == vignette && this.grain == grain && this.beyond == beyond
-                && this.blur == blur && this.saturation == saturation) return;
+                && this.vignette == vignette && this.grain == grain && this.beyondMode == beyondMode && this.beyond == beyond
+                && this.blur == blur && this.brightness == brightness && this.saturation == saturation) return;
         presentationChanged |= this.original != original || this.cinematic != cinematic
                 || (this.cinematicAmount > 0) != (cinematicAmount > 0)
-                || (this.beyond > 0) != (beyond > 0);
+                || this.beyondMode != beyondMode;
         this.original = original;
         this.cinematic = cinematic; this.cinematicAmount = cinematicAmount;
         this.vignette = vignette; this.grain = grain;
-        this.beyond = beyond; this.blur = blur; this.saturation = saturation;
+        this.beyondMode = beyondMode; this.beyond = beyond; this.blur = blur;
+        this.brightness = brightness; this.saturation = saturation;
         visualRevision++;
         renderer.xServerView.queueEvent(this::releaseChangedPresentation);
         renderer.xServerView.requestRender();
@@ -74,7 +75,7 @@ public class EffectComposer {
         if (!presentationChanged || EGL14.eglGetCurrentContext().equals(EGL14.EGL_NO_CONTEXT)) return;
         if (presentation != null) presentation.release();
         presentation = null;
-        if (original || (presentationOnlyBuffers && (cinematic == 0 || cinematicAmount == 0) && beyond == 0 && !canUseScene()
+        if (original || (presentationOnlyBuffers && (cinematic == 0 || cinematicAmount == 0) && beyondMode == 0 && !canUseScene()
                 && !gameFxaa && !gameFsr && gameSharpness == 0 && effects.isEmpty())) {
             if (EGL14.eglGetCurrentContext().equals(bufferContext)) {
                 if (readBuffer != null) readBuffer.destroy();
@@ -88,7 +89,7 @@ public class EffectComposer {
     }
 
     private boolean canUseBeyond() {
-        return beyond > 0 && !renderer.isFullscreen()
+        return beyondMode > 0 && !renderer.isFullscreen()
                 && (renderer.viewTransformation.viewWidth < renderer.surfaceWidth
                     || renderer.viewTransformation.viewHeight < renderer.surfaceHeight);
     }
@@ -399,7 +400,7 @@ public class EffectComposer {
         if ((useCinematic || useBeyond) && (outWidth <= 0 || outHeight <= 0)) useCinematic = useBeyond = false;
         if ((useCinematic || useBeyond) && presentation == null) presentation = new PresentationEffects();
         if (useCinematic && presentation.draw(renderer, readBuffer, writeBuffer.getFramebuffer(),
-                outX, outY, outWidth, outHeight, true, Math.min(cinematic, qualityLimit),
+                outX, outY, outWidth, outHeight, Math.min(cinematic, qualityLimit),
                 cinematicAmount / 100f, vignette ? 1f : 0f, grain ? 1f : 0f)) swapBuffers();
         for (int i = 0; i < frameEffects.size(); i++) {
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, useBeyond || i + 1 < frameEffects.size()
@@ -410,9 +411,9 @@ public class EffectComposer {
             renderEffect(frameEffects.get(i));
             swapBuffers();
         }
-        boolean borderDrawn = useBeyond && presentation.draw(renderer, readBuffer, outputFramebuffer,
-                outX, outY, outWidth, outHeight, false, qualityLimit,
-                beyond / 100f, blur / 100f, saturation / 100f);
+        boolean borderDrawn = useBeyond && presentation.drawBorders(renderer, readBuffer, outputFramebuffer,
+                outX, outY, outWidth, outHeight, qualityLimit, visualRevision,
+                beyondMode == 2 ? beyond / 100f : 0f, blur / 100f, brightness / 100f, saturation / 100f);
         if (!borderDrawn && (useBeyond || frameEffects.isEmpty())) {
             if (copyMaterial == null) copyMaterial = new ScreenMaterial();
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, outputFramebuffer);

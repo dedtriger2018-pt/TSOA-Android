@@ -677,8 +677,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         boolean original = tsoaOptions.isOriginalMode();
         xServerView.getRenderer().effectComposer.configurePresentation(original,
                 tsoaOptions.getCinematicLevel(), tsoaOptions.getCinematicAmount(), tsoaOptions.isCinematicVignette(),
-                tsoaOptions.isCinematicGrain(), tsoaOptions.getBeyondAmount(),
-                tsoaOptions.getBeyondBlur(), tsoaOptions.getBeyondSaturation());
+                tsoaOptions.isCinematicGrain(), tsoaOptions.getBeyondMode(), tsoaOptions.getBeyondAmount(),
+                tsoaOptions.getBeyondBlur(), tsoaOptions.getBeyondBrightness(), tsoaOptions.getBeyondSaturation());
         int mode = original ? 0 : tsoaOptions.getGameHdrMode();
         // A singleTask game activity may be resumed after a lobby setting changes.
         // Keep manual screen effects intact when the lobby preference is unchanged.

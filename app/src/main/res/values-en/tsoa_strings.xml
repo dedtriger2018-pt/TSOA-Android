@@ -250,4 +250,7 @@
     <string name="tsoa_chronos_deleted">Checkpoint deleted.</string>
     <string name="tsoa_chronos_delete_confirm">Delete this checkpoint? Checkpoints with branches are protected.</string>
     <string name="tsoa_chronos_close_game">Close the game before changing or copying saves.</string>
+    <string name="tsoa_beyond_black">Black border</string>
+    <string name="tsoa_beyond_ambient">Ambient blur</string>
+    <string name="tsoa_beyond_brightness">Border brightness</string>
 </resources>

@@ -126,12 +126,12 @@ public final class SpatialLifecycleCheck {
                 "Final HDR/Bloom/spatial composite escaped the requested frame-history target");
 
         int originalNativeCaptures=renderer.nativeCaptures;
-        renderer.effectComposer.configurePresentation(true,3,75,true,true,60,30,40);
+        renderer.effectComposer.configurePresentation(true,3,75,true,true,2,60,30,70,40);
         GLES20.draws.clear();
         renderer.frame();
         require(GLES20.draws.isEmpty()&&renderer.nativeCaptures==originalNativeCaptures,
                 "Original Mode retained optional passes");
-        renderer.effectComposer.configurePresentation(false,0,75,false,false,0,30,40);
+        renderer.effectComposer.configurePresentation(false,0,75,false,false,0,0,30,70,40);
         GLES20.draws.clear();
         renderer.frame();
         require(easu(0)&&fxaa(1)&&rcas(2)&&color.isBloomEnabled()&&color.getHdrStrength()==1.0f,

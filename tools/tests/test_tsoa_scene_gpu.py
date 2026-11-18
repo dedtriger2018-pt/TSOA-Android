@@ -54,6 +54,7 @@ class EmitScene {
         Files.writeString(Path.of(args[0], "capture"), SceneShaders.capture());
         Files.writeString(Path.of(args[0], "recognize"), SceneShaders.recognize());
         Files.writeString(Path.of(args[0], "estimate"), SceneShaders.estimate());
+        Files.writeString(Path.of(args[0], "lumenMap"), SceneShaders.lumenMap());
         Files.writeString(Path.of(args[0], "reconstruct"), SceneShaders.reconstruct());
         Files.writeString(Path.of(args[0], "probe"), SceneShaders.probe());
     }
@@ -68,7 +69,7 @@ class EmitScene {
         return {name: shaders.compileProgram(
             shaders.compileShader(VERTEX, GL.GL_VERTEX_SHADER),
             shaders.compileShader("#version 300 es\n" + Path(temp, name).read_text(), GL.GL_FRAGMENT_SHADER))
-                for name in ("capture", "recognize", "estimate", "reconstruct", "probe")}
+                for name in ("capture", "recognize", "estimate", "lumenMap", "reconstruct", "probe")}
 
 
 def texture(width, height, pixels=None):
@@ -119,6 +120,7 @@ class Scene:
         self.map_size = (96, 54)
         self.reference = [texture(*self.map_size), texture(*self.map_size)]
         self.structure = [texture(*self.map_size), texture(*self.map_size)]
+        self.smart = [texture(*self.map_size), texture(*self.map_size)]
         self.score, self.output, self.probe = texture(1, 1), texture(*self.size), texture(8, 4)
         self.index = 0
         self.ready = False
@@ -140,6 +142,10 @@ class Scene:
             draw(self.programs["estimate"], self.structure[nxt], self.map_size,
                  {"screenTexture": self.reference[nxt], "referenceTexture": self.reference[self.index],
                   "structureTexture": self.structure[self.index], "scoreTexture": self.score}, self.step)
+            draw(self.programs["lumenMap"], self.smart[nxt], self.map_size,
+                 {"screenTexture": self.reference[nxt], "structureTexture": self.structure[nxt],
+                  "scoreTexture": self.score, "smartTexture": self.smart[self.index]},
+                 self.step | {"history": float(self.ready)})
             self.index = nxt
             if not self.ready:
                 self.ready = True
@@ -147,7 +153,8 @@ class Scene:
 
         result = draw(self.programs["reconstruct"], self.output, self.size,
                       {"screenTexture": src, "referenceTexture": self.reference[self.index],
-                       "structureTexture": self.structure[self.index], "scoreTexture": self.score},
+                       "structureTexture": self.structure[self.index], "scoreTexture": self.score,
+                       "smartTexture": self.smart[self.index]},
                       self.coords | self.step | {"levels": levels, "phase": phase})
         measurement = draw(self.programs["probe"], self.probe, (8, 4),
                            {"screenTexture": src, "referenceTexture": self.output, "scoreTexture": self.score},
@@ -197,6 +204,21 @@ def main():
         measured[str(levels)] = int(probe[..., 0].max())
     assert measured["(0, 3)"] > measured["(0, 1)"]
     assert not np.array_equal(model.draw(source, (3, 0), phase=.3)[1], model.draw(source, (3, 0), phase=3.5)[1])
+
+    # Medium cannot cut more than a few 8-bit levels of signed diffuse/AO.
+    _, medium, _ = model.draw(source, (0, 2))
+    assert (expected[..., :3].astype(int) - medium[..., :3].astype(int)).max() <= 7
+    # Alternating paint texture is incoherent, while a broad gradient survives.
+    texture_paint = source.copy()
+    for x in range(source.shape[1]):
+        noise = 21 if x % 6 < 3 else -21
+        texture_paint[:, x, :3] = np.clip(texture_paint[:, x, :3].astype(int) + noise, 0, 255)
+    painted = Scene(programs, (320, 180))
+    for _ in range(3):
+        _, painted_result, _ = painted.draw(texture_paint, (0, 2), analyze=True)
+    signed = painted_result[..., :3].astype(int) - texture_paint[..., :3].astype(int)
+    assert np.abs(np.diff(signed[72:145, 40:280], axis=1)).mean() < 1.6
+    assert not np.array_equal(painted_result, texture_paint)
 
     overlay = source.copy()
     overlay[82:128, 140:186] = (250, 14, 220, 255)

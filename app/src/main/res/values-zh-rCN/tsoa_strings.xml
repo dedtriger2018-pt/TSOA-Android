@@ -250,4 +250,7 @@
     <string name="tsoa_chronos_deleted">检查点已删除。</string>
     <string name="tsoa_chronos_delete_confirm">删除此检查点？具有下级分支的检查点受保护。</string>
     <string name="tsoa_chronos_close_game">请关闭游戏后再修改或复制存档。</string>
+    <string name="tsoa_beyond_black">纯黑边缘</string>
+    <string name="tsoa_beyond_ambient">环境模糊</string>
+    <string name="tsoa_beyond_brightness">边缘亮度</string>
 </resources>

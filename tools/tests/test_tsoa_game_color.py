@@ -272,7 +272,9 @@ package com.winlator.renderer;
 class PresentationEffects {
     public void release() {}
     public boolean draw(GLRenderer r,RenderTarget input,int output,int x,int y,int w,int h,
-                        boolean cine,int quality,float amount,float first,float second) {return false;}
+                        int quality,float amount,float first,float second) {return false;}
+    public boolean drawBorders(GLRenderer r,RenderTarget input,int output,int x,int y,int w,int h,
+               int quality,long revision,float amount,float blur,float brightness,float saturation) {return false;}
 }
 """,
     "com/winlator/renderer/SceneReconstruction.java": """
