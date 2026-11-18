@@ -191,7 +191,7 @@ public final class TsoaOptionsDialog {
         slider(s(R.string.tsoa_cinematic_amount), "game_cinematic_amount", 0, 100, options.getCinematicAmount(), false, "%");
         toggle(s(R.string.tsoa_cinematic_vignette), "", "game_cinematic_vignette", options.isCinematicVignette());
         toggle(s(R.string.tsoa_cinematic_grain), "", "game_cinematic_grain", options.isCinematicGrain());
-        intChoice("Beyond Screen", "game_beyond_mode", new String[]{
+        intChoice(s(R.string.tsoa_beyond_title), "game_beyond_mode", new String[]{
                 s(R.string.tsoa_off), s(R.string.tsoa_beyond_black), s(R.string.tsoa_beyond_ambient)},
                 new int[]{0, 1, 2}, options.getBeyondMode());
         slider(s(R.string.tsoa_beyond), "game_beyond", 0, 100, options.getBeyondAmount(), false, "%");

@@ -253,4 +253,24 @@
     <string name="tsoa_beyond_black">纯黑边缘</string>
     <string name="tsoa_beyond_ambient">环境模糊</string>
     <string name="tsoa_beyond_brightness">边缘亮度</string>
+    <string name="tsoa_graph_active">当前分支</string>
+    <string name="tsoa_graph_checkpoint">检查点</string>
+    <string name="tsoa_graph_count">%1$d 个检查点 · 存档连接</string>
+    <string name="tsoa_graph_records">检查点记录</string>
+    <string name="tsoa_graph_no_records">此检查点没有关联画面。</string>
+    <string name="tsoa_graph_manage">管理检查点</string>
+    <string name="tsoa_graph_zoom_in">放大</string>
+    <string name="tsoa_graph_zoom_out">缩小</string>
+    <string name="tsoa_graph_previous">上一个检查点</string>
+    <string name="tsoa_graph_next">下一个检查点</string>
+    <string name="tsoa_pda_chapters">章节</string>
+    <string name="tsoa_pda_events">事件</string>
+    <string name="tsoa_pda_search">搜索分类、日期或检查点</string>
+    <string name="tsoa_pda_capture_short">保存画面</string>
+    <string name="tsoa_pda_all">全部</string>
+    <string name="tsoa_pda_local">本地游戏画面档案</string>
+    <string name="tsoa_pda_unseen">未查看 · %1$s</string>
+    <string name="tsoa_pda_count">%1$d 条记录 · %2$d 条未查看</string>
+    <string name="tsoa_pda_opening">正在打开画面…</string>
+    <string name="tsoa_beyond_title">屏幕延展</string>
 </resources>

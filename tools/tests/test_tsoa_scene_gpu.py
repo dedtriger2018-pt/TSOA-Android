@@ -142,7 +142,7 @@ class Scene:
             draw(self.programs["estimate"], self.structure[nxt], self.map_size,
                  {"screenTexture": self.reference[nxt], "referenceTexture": self.reference[self.index],
                   "structureTexture": self.structure[self.index], "scoreTexture": self.score}, self.step)
-            draw(self.programs["lumenMap"], self.smart[nxt], self.map_size,
+            self.latest_smart = draw(self.programs["lumenMap"], self.smart[nxt], self.map_size,
                  {"screenTexture": self.reference[nxt], "structureTexture": self.structure[nxt],
                   "scoreTexture": self.score, "smartTexture": self.smart[self.index]},
                  self.step | {"history": float(self.ready)})
@@ -219,6 +219,19 @@ def main():
     signed = painted_result[..., :3].astype(int) - texture_paint[..., :3].astype(int)
     assert np.abs(np.diff(signed[72:145, 40:280], axis=1)).mean() < 1.6
     assert not np.array_equal(painted_result, texture_paint)
+
+    # Map stores a highlight-confidence channel independent of diffuse brightness.
+    # A smooth concentrated highlight on a neutral panel is selected over a flat panel.
+    material = source.copy()
+    material[48:146, 34:150, :3] = (155, 155, 155)
+    yy, xx = np.mgrid[:180, :320]
+    shine = np.exp(-((xx-215)**2+(yy-105)**2)/135.0)
+    material[48:146, 170:287, :3] = np.clip(139 + 104*shine[48:146,170:287,None], 0, 255)
+    survey = Scene(programs, (320, 180))
+    for _ in range(3):
+        survey.draw(material, (0, 2), analyze=True)
+    gloss = survey.latest_smart[..., 3]
+    assert gloss[27:36, 61:70].max() > 75 and not gloss[27:36, 21:37].any()
 
     overlay = source.copy()
     overlay[82:128, 140:186] = (250, 14, 220, 255)

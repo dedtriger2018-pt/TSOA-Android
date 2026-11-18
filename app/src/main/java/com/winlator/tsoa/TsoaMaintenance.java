@@ -71,27 +71,13 @@ public final class TsoaMaintenance {
     public void openChronos() {
         if (busy || closed || new TsoaOptions(activity).isOriginalMode()) return;
         ChronosStore store = new ChronosStore(new File(activity.getNoBackupFilesDir(), "chronos"));
-        java.util.ArrayList<ChronosStore.Point> points = store.list();
         String head = TsoaOptions.prefs(activity).getString("chronos_head", "root");
-        String[] labels = new String[points.size()];
-        for (int i = 0; i < labels.length; i++) {
-            ChronosStore.Point point = points.get(i);
-            String label = pointDate(point.time);
-            if (!point.parent.equals("root"))
-                label = s(R.string.tsoa_chronos_edge, pointDate(Long.parseLong(point.parent.substring(0, 13))), label);
-            labels[i] = point.id.equals(head) ? s(R.string.tsoa_chronos_current, label) : label;
-        }
-        AlertDialog.Builder dialog = new AlertDialog.Builder(activity).setTitle(s(R.string.tsoa_chronos))
-                .setNegativeButton(s(R.string.tsoa_close), null)
-                .setPositiveButton(s(R.string.tsoa_chronos_new), (prompt, button) ->
-                        execute(s(R.string.tsoa_chronos_new), () -> withSaves(() -> {
-                            ChronosStore.Point point = store.create(saveDirectory(), head);
-                            TsoaOptions.prefs(activity).edit().putString("chronos_head", point.id).apply();
-                            return s(R.string.tsoa_chronos_created, pointDate(point.time));
-                        })));
-        if (labels.length == 0) dialog.setMessage(s(R.string.tsoa_chronos_empty));
-        else dialog.setItems(labels, (prompt, index) -> openPoint(store, points.get(index)));
-        dialog.show();
+        new ChronosTerminal(activity, store.list(), head,
+                () -> execute(s(R.string.tsoa_chronos_new), () -> withSaves(() -> {
+                    ChronosStore.Point point = store.create(saveDirectory(), head);
+                    TsoaOptions.prefs(activity).edit().putString("chronos_head", point.id).apply();
+                    return s(R.string.tsoa_chronos_created, pointDate(point.time));
+                })), point -> openPoint(store, point)).show();
     }
 
     private void openPoint(ChronosStore store, ChronosStore.Point point) {

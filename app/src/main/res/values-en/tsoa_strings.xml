@@ -253,4 +253,24 @@
     <string name="tsoa_beyond_black">Black border</string>
     <string name="tsoa_beyond_ambient">Ambient blur</string>
     <string name="tsoa_beyond_brightness">Border brightness</string>
+    <string name="tsoa_graph_active">Active branch</string>
+    <string name="tsoa_graph_checkpoint">Checkpoint</string>
+    <string name="tsoa_graph_count">%1$d checkpoints · save links</string>
+    <string name="tsoa_graph_records">Checkpoint records</string>
+    <string name="tsoa_graph_no_records">No captures are linked to this checkpoint.</string>
+    <string name="tsoa_graph_manage">Manage checkpoint</string>
+    <string name="tsoa_graph_zoom_in">Zoom in</string>
+    <string name="tsoa_graph_zoom_out">Zoom out</string>
+    <string name="tsoa_graph_previous">Previous checkpoint</string>
+    <string name="tsoa_graph_next">Next checkpoint</string>
+    <string name="tsoa_pda_chapters">Chapters</string>
+    <string name="tsoa_pda_events">Events</string>
+    <string name="tsoa_pda_search">Search category, date or checkpoint</string>
+    <string name="tsoa_pda_capture_short">Save screen</string>
+    <string name="tsoa_pda_all">All</string>
+    <string name="tsoa_pda_local">Local archive of game screens</string>
+    <string name="tsoa_pda_unseen">Unviewed · %1$s</string>
+    <string name="tsoa_pda_count">%1$d records · %2$d unviewed</string>
+    <string name="tsoa_pda_opening">Opening capture…</string>
+    <string name="tsoa_beyond_title">Beyond Screen</string>
 </resources>

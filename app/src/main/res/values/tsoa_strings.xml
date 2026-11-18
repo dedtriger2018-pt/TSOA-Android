@@ -253,4 +253,24 @@
     <string name="tsoa_beyond_black">Borda preta</string>
     <string name="tsoa_beyond_ambient">Blur ambiental</string>
     <string name="tsoa_beyond_brightness">Brilho das bordas</string>
+    <string name="tsoa_graph_active">Ramo ativo</string>
+    <string name="tsoa_graph_checkpoint">Checkpoint</string>
+    <string name="tsoa_graph_count">%1$d checkpoints · vínculos de saves</string>
+    <string name="tsoa_graph_records">Registros do checkpoint</string>
+    <string name="tsoa_graph_no_records">Nenhuma captura ligada a este checkpoint.</string>
+    <string name="tsoa_graph_manage">Gerenciar checkpoint</string>
+    <string name="tsoa_graph_zoom_in">Ampliar</string>
+    <string name="tsoa_graph_zoom_out">Reduzir</string>
+    <string name="tsoa_graph_previous">Checkpoint anterior</string>
+    <string name="tsoa_graph_next">Próximo checkpoint</string>
+    <string name="tsoa_pda_chapters">Capítulos</string>
+    <string name="tsoa_pda_events">Acontecimentos</string>
+    <string name="tsoa_pda_search">Buscar categoria, data ou checkpoint</string>
+    <string name="tsoa_pda_capture_short">Guardar tela</string>
+    <string name="tsoa_pda_all">Todos</string>
+    <string name="tsoa_pda_local">Arquivo local de telas do jogo</string>
+    <string name="tsoa_pda_unseen">Ainda não visto · %1$s</string>
+    <string name="tsoa_pda_count">%1$d registros · %2$d ainda não vistos</string>
+    <string name="tsoa_pda_opening">Abrindo captura…</string>
+    <string name="tsoa_beyond_title">Beyond Screen</string>
 </resources>

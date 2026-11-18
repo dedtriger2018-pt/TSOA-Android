@@ -19,19 +19,24 @@ jogo durante a análise.
   motores. Gradientes, contraste regional e posição produzem estimativas de
   relevo e contornos. Os canais auxiliares guardam tendência especular e
   estabilidade local. O Lumen calcula normais do gradiente de relevo.
+- O Lumen mantém dois mapas auxiliares de baixa resolução. O mapa cruza
+  inclinações em duas escalas, estima confiança e favorece realces
+  suaves já presentes na arte. A mistura temporal é condicionada à
+  estabilidade local e à confiança da cena.
 - O reconhecimento amostra 40 regiões por quadro real. Mudanças globais
   suspendem a reconstrução e fazem a próxima análise substituir o cache. Em
   regiões estáveis, os mapas anteriores reduzem variações de relevo e
-  material. O cache em memória retém os mapas corrente e anterior e usa
-  menos de 600 KiB. Repetições do mesmo quadro reaproveitam o cache. A
+  material. O cache estrutural retém os mapas corrente e anterior em até 576 KiB.
+  Com Lumen ativo, os auxiliares acrescentam até 288 KiB. Repetições do mesmo quadro reaproveitam o cache. A
   análise aquece em intervalos de 48 ms e depois usa intervalos de 88 a
   140 ms, conforme o preset mais alto dos dois motores.
 - Gênesis desloca amostras de acordo com o relevo. A comparação com o
   quadro real protege contornos, regiões em transição e o destino dos
   deslocamentos. Lumen estima a posição da luz a partir das áreas mais
   claras e usa a orientação das superfícies para reconstruir a resposta
-  luminosa. Intermediário acrescenta especular e oclusão local. Ultra
-  acrescenta três amostras de sombra de contato.
+  luminosa. Intermediário acrescenta especular seletivo e oclusão ampla e
+  discreta. Ultra acrescenta um termo breve de contato. Todos os presets
+  protegem sombras já presentes com limites dependentes da luminância.
 - A máscara protege bordas, área de diálogos, detalhes de alto contraste
   e regiões com discrepância temporal. Tons quentes típicos de pele
   reduzem a intensidade. A proteção é heurística. Textos ou personagens
@@ -72,7 +77,7 @@ por quadro.
 adb logcat -d -s TSOA_FE_DIAG:I | grep -E 'Scene GPU|Scene reconstruction'
 ```
 
-O teste GLES `tools/tests/test_tsoa_scene_gpu.py` compila os cinco shaders
+O teste GLES `tools/tests/test_tsoa_scene_gpu.py` compila os shaders
 de produção, compara pixels, mede as saídas em todos os presets, verifica
 áreas protegidas e confirma recuperação automática após um corte. O teste
 de desempenho e a inspeção visual no Honor X8 dependem do aparelho.

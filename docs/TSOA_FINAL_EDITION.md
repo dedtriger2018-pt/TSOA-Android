@@ -18,11 +18,11 @@ de quadros reais. As opções novas começam desligadas.
   temporal. Exposição, contraste e cor são limitados para proteger pretos
   e altas luzes. Granulação fixa e vinheta são opcionais. Se Bloom estiver
   ativo, ele recebe a imagem ajustada.
-- **Beyond Screen** usa a imagem processada para amostrar e iluminar as
-  sobras do viewport ajustado, com brilho, desfoque e saturação reguláveis.
-  O teste GLES compara os pixels internos bit a bit. A intensidade zero
-  devolve as bordas pretas. Stretch ocupa o viewport e deixa o efeito sem
-  área para preencher. A resposta às cores das bordas é direta.
+- **Beyond Screen** oferece Desligado, Borda preta e Blur ambiental.
+  O modo ambiental reduz o viewport, desfoca em dois eixos e usa as
+  bordas reais da cena, com intensidade, brilho, desfoque e saturação
+  reguláveis. O teste GLES compara os pixels internos bit a bit.
+  Stretch ocupa o viewport e deixa o efeito sem área para preencher.
 - **Painel de desempenho** exibe cadência de conteúdo do compositor,
   quadros sintéticos submetidos, tempo de submissão CPU/driver, PSS do
   processo e estado térmico reportado pelo Android. Esses números
@@ -36,10 +36,13 @@ de quadros reais. As opções novas começam desligadas.
   copia a superfície do jogo por PixelCopy e registra apenas o quadro
   visível. O arquivo pode ser revisto no jogo ou em **Consultar PDA**.
 - **Arquivos → Chronos** cria checkpoints depois que o jogo foi fechado.
-  Restaure um ponto e crie um novo checkpoint para acrescentar um ramo.
-  A lista mostra o ramo ativo e o vínculo de cada ponto com seu pai.
-  A restauração exige confirmação e conserva a pasta anterior como
-  backup. O arquivo do PDA associa a captura ao checkpoint ativo na hora.
+  O mapa permite arrastar, ampliar e consultar os ramos reais. Selecione
+  um ponto para ver seus registros ou gerenciar a restauração. Restaurar
+  um checkpoint exige confirmação e conserva a pasta anterior como
+  backup. Cada captura do PDA guarda o checkpoint ativo no momento.
+- **Consultar PDA** permite filtrar categorias e buscar por data,
+  categoria ou checkpoint. As imagens começam fechadas. O marcador de
+  não visto acompanha a abertura da captura no arquivo local.
 
 ## Dados e proteção dos saves
 
@@ -72,7 +75,7 @@ depende de validação com saves reais.
 | 1–2. Base e preservação | Base validada, lobby animado existente, recursos e correções de runtime preservados. |
 | 3. Framework | O compositor reutiliza alvos e encadeia EASU, reconstrução, Cinematic, efeitos espaciais e de cor, e Beyond. FG recebe só quadros reais processados. |
 | 4–5. Gênesis e Lumen | Preservados conforme o teste físico. Profundidade e materiais estimados da imagem 2D. Decomposição semântica, geometria métrica, oclusões reais, personagens deformáveis e volumetria seguem experimentais ou pendentes. |
-| 6–7. Apresentação | Histograma e adaptação de cor na GPU, com bordas coloridas opcionais. Narrativa e amortecimento temporal próprio das bordas seguem pendentes. |
+| 6–7. Apresentação | Histograma e adaptação de cor na GPU, com extensão ambiental desfocada opcional. Narrativa e amortecimento temporal próprio das bordas seguem pendentes. |
 | 8. Reality Bridge | Captura direta do quadro consultado pelo jogador, PDA categorizado e registro local. Integração semântica pendente. |
 | 9. Chronos | Checkpoints, ramos, recuperação dos saves anteriores, vínculos com o PDA. Árvore semântica pendente. |
 | 10–12. Desempenho e opções | Painel local, limites adaptativos com histerese, menus PT/EN/zh-CN e Modo Original. |

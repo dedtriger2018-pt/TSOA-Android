@@ -76,6 +76,11 @@ def main():
     assert np.array_equal(side[:, margin:-margin], game[:, margin:-margin])
     assert np.abs(np.diff(side[:, :margin, :3].astype(int), axis=0)).max() < 12
     assert np.abs(np.diff(side[:, :margin, :3].astype(int), axis=1)).max() < 12
+    changed = game.copy()
+    changed[..., :3] = game[..., [2, 1, 0]]
+    color_change = ambient(changed, coords, w, h)
+    assert not np.array_equal(side[:, :margin], color_change[:, :margin])
+    assert np.array_equal(color_change[:, margin:-margin], changed[:, margin:-margin])
     dark_side = ambient(game, coords, w, h, brightness=.2)
     assert dark_side[:, :margin, :3].max() < side[:, :margin, :3].max()
     gray_side = ambient(game, coords, w, h, sat=0.)
