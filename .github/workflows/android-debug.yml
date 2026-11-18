@@ -56,7 +56,9 @@ jobs:
           python3 tools/tests/test_tsoa_box64_runtime.py --json-jar "${RUNNER_TEMP}/tsoa-json.jar"
 
       - name: Validate TSOA save backups
-        run: python3 tools/tests/test_tsoa_save_archive.py
+        run: |
+          python3 tools/tests/test_tsoa_save_archive.py
+          python3 tools/tests/test_tsoa_chronos_budget.py
 
       - name: Validate TSOA rain audio
         run: |
@@ -78,13 +80,14 @@ jobs:
           python3 tools/tests/test_tsoa_frame_presenter.py
           python3 tools/tests/test_tsoa_frame_pacing.py
 
-      - name: Validate Genesis and Lumen
+      - name: Validate reconstruction and presentation shaders
         run: |
           sudo apt-get install -y --no-install-recommends libegl1 libegl-mesa0 libgles2 libgl1-mesa-dri
           python3 -m venv "${RUNNER_TEMP}/tsoa-scene"
           SCENE_PYTHON="${RUNNER_TEMP}/tsoa-scene/bin/python"
           "$SCENE_PYTHON" -m pip install --disable-pip-version-check --only-binary=:all: 'numpy==2.3.5' 'PyOpenGL==3.1.10'
           "$SCENE_PYTHON" tools/tests/test_tsoa_scene_gpu.py
+          "$SCENE_PYTHON" tools/tests/test_tsoa_presentation.py
 
       - name: Build debug APK
         run: |
@@ -94,7 +97,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TSOA-PreAlpha-003-debug
+          name: TSOA-FE-Final-Edition-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
