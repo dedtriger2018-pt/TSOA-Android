@@ -204,17 +204,5 @@
     <string name="tsoa_scene_low">低</string>
     <string name="tsoa_scene_medium">中</string>
     <string name="tsoa_scene_ultra">超高</string>
-    <string name="tsoa_scene_detail">请创建场景配置文件，或导入 .tscene 文件。识别出背景后，Genesis 会让标记区域产生动态效果，Lumen 会根据深度图和材质图为这些区域打光。</string>
-    <string name="tsoa_scene_checking">正在检查场景配置文件…</string>
-    <string name="tsoa_scene_missing">尚未安装场景配置文件。</string>
-    <string name="tsoa_scene_invalid">无法读取配置文件。请重新导入。</string>
-    <string name="tsoa_scene_ready">已安装配置文件 · 贴图尺寸 %1$d × %2$d</string>
-    <string name="tsoa_scene_import">导入场景配置文件</string>
-    <string name="tsoa_scene_remove">移除场景配置文件</string>
-    <string name="tsoa_scene_remove_message">从此设备移除场景配置文件？之后可以重新导入。</string>
-    <string name="tsoa_scene_removed">已移除场景配置文件。</string>
-    <string name="tsoa_scene_import_failed">请确认文件是有效的 .tscene 配置文件，且设备有可用空间。</string>
-    <string name="tsoa_scene_imported">已安装场景配置文件。请在视频设置中选择 Genesis 或 Lumen 的强度。</string>
-    <string name="tsoa_scene_create">创建场景配置文件</string>
-    <string name="tsoa_scene_editor_save">保存并使用此配置文件？</string>
+    <string name="tsoa_scene_detail">创世纪根据游戏画面估算起伏和运动，流明利用这些信息重建光照。置信度低时保留原始画面。</string>
 </resources>

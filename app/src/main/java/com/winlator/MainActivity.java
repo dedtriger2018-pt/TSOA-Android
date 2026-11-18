@@ -470,11 +470,6 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                 }
             }
             @Override public void resetControls() { TsoaGameControls.resetSelectedLayout(MainActivity.this); }
-            @Override public void createScene() {
-                startActivity(new Intent(MainActivity.this, com.winlator.tsoa.SceneEditorActivity.class));
-            }
-            @Override public void importScene() { maintenance.importScene(); }
-            @Override public void removeScene() { maintenance.removeScene(); }
             @Override public void importGame() { if (canMaintainGame()) openGameFolderPicker(); }
             @Override public void exportSaves() { if (canMaintainGame()) maintenance.exportSaves(); }
             @Override public void importSaves() { if (canMaintainGame()) maintenance.importSaves(); }

@@ -3,32 +3,31 @@ package com.winlator.renderer;
 import android.opengl.EGL14;
 import android.opengl.EGLContext;
 import android.opengl.GLES20;
-import android.util.Log;
 
 import com.winlator.renderer.material.ScreenMaterial;
 import com.winlator.renderer.material.ShaderMaterial.Uniform;
 
 import java.nio.ByteBuffer;
-import java.util.Arrays;
 
-/** One optional prepared scene, owned by the game GL thread. All recognition stays on the GPU. */
+/** Shared GPU analysis and composition of real game frames. */
 final class SceneReconstruction {
-    private final int[] textures = new int[3];
-    private final int[] scoreFramebuffer = new int[1];
-    private final int[] status = new int[1];
-    private SceneProfile profile;
+    private static final int PROBE_WIDTH = 8, PROBE_HEIGHT = 4;
+    private final int[] linkStatus = new int[1];
+    private final ByteBuffer pixels = ByteBuffer.allocateDirect(PROBE_WIDTH * PROBE_HEIGHT * 4);
     private EGLContext context;
-    private Pass recognize, reconstruct;
+    private RenderTarget reference, nextReference, structure, nextStructure, score, probe;
+    private Pass capture, recognize, estimate, reconstruct, measure;
+    private int surfaceWidth, surfaceHeight, viewX, viewY, viewWidth, viewHeight, mapWidth, mapHeight;
+    private long lastSource, lastAnalysis, lastProbe;
+    private int analyses, frames;
     private boolean failed;
-    private long lastRecognizedTime = Long.MIN_VALUE;
-    private int lastX, lastY, lastWidth, lastHeight, surfaceWidth, surfaceHeight;
 
     private static final class Pass extends ScreenMaterial {
         private final String fragment;
-        final Uniform reference = new Uniform("referenceTexture"), structure = new Uniform("structTexture");
+        final Uniform reference = new Uniform("referenceTexture"), structure = new Uniform("structureTexture");
         final Uniform score = new Uniform("scoreTexture"), origin = new Uniform("viewOrigin");
-        final Uniform extent = new Uniform("viewExtent"), profileStep = new Uniform("profileStep");
-        final Uniform levels = new Uniform("levels"), phase = new Uniform("phase");
+        final Uniform extent = new Uniform("viewExtent"), step = new Uniform("mapStep");
+        final Uniform levels = new Uniform("levels"), phase = new Uniform("phase"), history = new Uniform("history");
 
         Pass(String fragment) { this.fragment = fragment; }
 
@@ -37,13 +36,45 @@ final class SceneReconstruction {
                     "    vUV=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));",
                     "    gl_Position=vec4(vUV*2.0-1.0,0,1);", "}");
         }
+
         @Override protected String getFragmentShader() { return fragment; }
     }
 
     private void compile(Pass pass) {
         pass.use();
-        GLES20.glGetProgramiv(pass.programId, GLES20.GL_LINK_STATUS, status, 0);
-        if (status[0] != GLES20.GL_TRUE) throw new IllegalStateException(GLES20.glGetProgramInfoLog(pass.programId));
+        GLES20.glGetProgramiv(pass.programId, GLES20.GL_LINK_STATUS, linkStatus, 0);
+        if (linkStatus[0] != GLES20.GL_TRUE) throw new IllegalStateException(GLES20.glGetProgramInfoLog(pass.programId));
+    }
+
+    private void allocate(RenderTarget target, int width, int height) {
+        target.setFormat(GLES20.GL_RGBA);
+        target.allocateFramebuffer(width, height);
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, target.getFramebuffer());
+        if (target.getFramebuffer() == 0
+                || GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER) != GLES20.GL_FRAMEBUFFER_COMPLETE)
+            throw new IllegalStateException("reconstruction framebuffer " + width + "x" + height);
+    }
+
+    private void initialize() {
+        int span = Math.max(viewWidth, viewHeight);
+        mapWidth = Math.max(1, Math.round(192f * viewWidth / span));
+        mapHeight = Math.max(1, Math.round(192f * viewHeight / span));
+        reference = new RenderTarget(); nextReference = new RenderTarget();
+        structure = new RenderTarget(); nextStructure = new RenderTarget();
+        score = new RenderTarget(); probe = new RenderTarget();
+        allocate(reference, mapWidth, mapHeight); allocate(nextReference, mapWidth, mapHeight);
+        allocate(structure, mapWidth, mapHeight); allocate(nextStructure, mapWidth, mapHeight);
+        allocate(score, 1, 1); allocate(probe, PROBE_WIDTH, PROBE_HEIGHT);
+        capture = new Pass(SceneShaders.capture()); compile(capture);
+        recognize = new Pass(SceneShaders.recognize()); compile(recognize);
+        estimate = new Pass(SceneShaders.estimate()); compile(estimate);
+        reconstruct = new Pass(SceneShaders.reconstruct()); compile(reconstruct);
+        measure = new Pass(SceneShaders.probe()); compile(measure);
+    }
+
+    boolean available(int width, int height) {
+        return !failed || surfaceWidth != width || surfaceHeight != height
+                || !EGL14.eglGetCurrentContext().equals(context);
     }
 
     private static void bind(int unit, int texture) {
@@ -51,97 +82,118 @@ final class SceneReconstruction {
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture);
     }
 
-    private static void upload(int texture, int w, int h, ByteBuffer pixels, int filter) {
-        bind(0, texture);
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, filter);
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, filter);
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
-        GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, w, h, 0,
-                GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, pixels);
-    }
-
-    private void initialize(SceneProfile scene) {
-        recognize = new Pass(SceneShaders.getRecognitionFragmentShader());
-        reconstruct = new Pass(SceneShaders.getReconstructionFragmentShader());
-        compile(recognize);
-        compile(reconstruct);
-        GLES20.glGenTextures(textures.length, textures, 0);
-        if (textures[0] == 0 || textures[1] == 0 || textures[2] == 0) throw new IllegalStateException("texture allocation");
-        // Both maps are bounded by the parser; Android accepts array-backed buffers for glTexImage2D.
-        upload(textures[0], scene.width, scene.height, ByteBuffer.wrap(scene.reference), GLES20.GL_LINEAR);
-        upload(textures[1], scene.width, scene.height, ByteBuffer.wrap(scene.structure), GLES20.GL_LINEAR);
-        upload(textures[2], 1, 1, null, GLES20.GL_NEAREST);
-        GLES20.glGenFramebuffers(1, scoreFramebuffer, 0);
-        if (scoreFramebuffer[0] == 0) throw new IllegalStateException("framebuffer allocation");
-        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, scoreFramebuffer[0]);
-        GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0,
-                GLES20.GL_TEXTURE_2D, textures[2], 0);
-        if (GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER) != GLES20.GL_FRAMEBUFFER_COMPLETE
-                || GLES20.glGetError() != GLES20.GL_NO_ERROR)
-            throw new IllegalStateException("profile upload or recognition framebuffer unavailable");
-    }
-
-    boolean available(SceneProfile requested, int w, int h) {
-        return !failed || profile != requested || surfaceWidth != w || surfaceHeight != h
-                || !EGL14.eglGetCurrentContext().equals(context);
-    }
-
-    private void bindInputs(Pass pass, int input, int x, int y, int w, int h) {
+    private void prepare(Pass pass, RenderTarget target, int width, int height,
+                         int input, int ref, int map, int confidence) {
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, target.getFramebuffer());
+        GLES20.glViewport(0, 0, width, height);
         pass.use();
-        pass.setUniformVec2(pass.origin, (float)x/surfaceWidth, (float)y/surfaceHeight);
-        pass.setUniformVec2(pass.extent, (float)w/surfaceWidth, (float)h/surfaceHeight);
+        pass.setUniformVec2(pass.origin, (float)viewX/surfaceWidth, (float)viewY/surfaceHeight);
+        pass.setUniformVec2(pass.extent, (float)viewWidth/surfaceWidth, (float)viewHeight/surfaceHeight);
+        pass.setUniformVec2(pass.step, 1f/mapWidth, 1f/mapHeight);
         pass.setUniformInt(pass.uniforms.screenTexture, 0);
         pass.setUniformInt(pass.reference, 1);
-        bind(0, input);
-        bind(1, textures[0]);
+        pass.setUniformInt(pass.structure, 2);
+        pass.setUniformInt(pass.score, 3);
+        bind(0, input); bind(1, ref); bind(2, map); bind(3, confidence);
     }
 
-    boolean draw(SceneProfile scene, int genesis, int lumen, GLRenderer renderer, int input,
-                 int outputFbo, int x, int y, int w, int h) {
+    private static void render() { GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, 3); }
+
+    private void recognize(int input, boolean previous) {
+        prepare(recognize, score, 1, 1, input, reference.getTextureId(), 0, 0);
+        recognize.setUniformFloat(recognize.history, previous ? 1f : 0f);
+        render();
+    }
+
+    private void analyze(int input) {
+        prepare(capture, nextReference, mapWidth, mapHeight, input, 0, 0, 0);
+        render();
+        prepare(estimate, nextStructure, mapWidth, mapHeight, nextReference.getTextureId(),
+                reference.getTextureId(), structure.getTextureId(), score.getTextureId());
+        render();
+        RenderTarget oldReference = reference, oldStructure = structure;
+        reference = nextReference; structure = nextStructure;
+        nextReference = oldReference; nextStructure = oldStructure;
+        analyses++;
+    }
+
+    private void diagnose(GLRenderer renderer, int input, RenderTarget output, int genesis, int lumen) {
+        prepare(measure, probe, PROBE_WIDTH, PROBE_HEIGHT, input, output.getTextureId(), 0, score.getTextureId());
+        render();
+        pixels.position(0);
+        GLES20.glReadPixels(0, 0, PROBE_WIDTH, PROBE_HEIGHT, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, pixels);
+        int error = GLES20.glGetError();
+        if (error != GLES20.GL_NO_ERROR) {
+            renderer.logGraphics("Scene GPU probe failed glError=0x" + Integer.toHexString(error));
+            return;
+        }
+        int changed = 0, maxDelta = 0;
+        for (int i = 0; i < pixels.capacity(); i += 4) {
+            int delta = pixels.get(i) & 255;
+            if (delta > 1) changed++;
+            maxDelta = Math.max(maxDelta, delta);
+        }
+        renderer.logGraphics("Scene GPU draw g=" + genesis + " l=" + lumen + " realFrames=" + frames
+                + " analyses=" + analyses + " map=" + mapWidth + "x" + mapHeight
+                + " confidence8=" + (pixels.get(1) & 255) + " cut8=" + (pixels.get(2) & 255)
+                + " changedCells=" + changed + "/" + (PROBE_WIDTH * PROBE_HEIGHT) + " maxDelta8=" + maxDelta
+                + " program=" + reconstruct.programId);
+    }
+
+    boolean draw(int genesis, int lumen, GLRenderer renderer, int input, RenderTarget output,
+                 int x, int y, int width, int height) {
         EGLContext current = EGL14.eglGetCurrentContext();
         if (current.equals(EGL14.EGL_NO_CONTEXT)) return false;
-        boolean changed = !current.equals(context) || profile != scene
-                || surfaceWidth != renderer.surfaceWidth || surfaceHeight != renderer.surfaceHeight;
-        if (changed) {
+        if (!current.equals(context) || surfaceWidth != renderer.surfaceWidth || surfaceHeight != renderer.surfaceHeight
+                || viewX != x || viewY != y || viewWidth != width || viewHeight != height) {
             release();
             context = current;
-            profile = scene;
             surfaceWidth = renderer.surfaceWidth;
             surfaceHeight = renderer.surfaceHeight;
+            viewX = x; viewY = y; viewWidth = width; viewHeight = height;
         }
         if (failed) return false;
         boolean blend = GLES20.glIsEnabled(GLES20.GL_BLEND);
         try {
             GLES20.glDisable(GLES20.GL_BLEND);
-            if (recognize == null) initialize(scene);
+            if (capture == null) initialize();
             long time = renderer.getSceneContentTime();
-            if (time != lastRecognizedTime || x != lastX || y != lastY || w != lastWidth || h != lastHeight) {
-                GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, scoreFramebuffer[0]);
-                GLES20.glViewport(0, 0, 1, 1);
-                bindInputs(recognize, input, x, y, w, h);
-                GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, 3);
-                lastRecognizedTime = time;
-                lastX = x; lastY = y; lastWidth = w; lastHeight = h;
+            boolean fresh = frames == 0 || time != lastSource;
+            if (fresh) {
+                boolean previous = analyses > 0;
+                recognize(input, previous);
+                int quality = Math.max(genesis, lumen);
+                // Reuse maps on repeated draws; warm up sooner and update high tiers more frequently.
+                long age = time - lastAnalysis;
+                long interval = analyses < 3 ? 48_000_000L : 166_000_000L - quality * 26_000_000L;
+                if (!previous || age >= interval || age < 0) {
+                    analyze(input);
+                    lastAnalysis = time;
+                    if (!previous) recognize(input, true);
+                }
+                lastSource = time;
+                frames++;
             }
-            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, outputFbo);
-            GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight);
-            bindInputs(reconstruct, input, x, y, w, h);
-            reconstruct.setUniformVec2(reconstruct.profileStep, 1f/scene.width, 1f/scene.height);
+
+            prepare(reconstruct, output, surfaceWidth, surfaceHeight, input, reference.getTextureId(),
+                    structure.getTextureId(), score.getTextureId());
             reconstruct.setUniformVec2(reconstruct.levels, genesis, lumen);
-            float phase = (float)((time % 16_000_000_000L) * (2.0 * Math.PI / 16_000_000_000.0));
-            reconstruct.setUniformFloat(reconstruct.phase, phase);
-            reconstruct.setUniformInt(reconstruct.structure, 2);
-            reconstruct.setUniformInt(reconstruct.score, 3);
-            bind(2, textures[1]);
-            bind(3, textures[2]);
-            GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, 3);
-            if (GLES20.glGetError() != GLES20.GL_NO_ERROR) throw new IllegalStateException("reconstruction draw failed");
+            reconstruct.setUniformFloat(reconstruct.phase,
+                    (float)((time % 9_000_000_000L) * (2.0 * Math.PI / 9_000_000_000.0)));
+            render();
+            int error = GLES20.glGetError();
+            if (error != GLES20.GL_NO_ERROR)
+                throw new IllegalStateException("reconstruction draw glError=0x" + Integer.toHexString(error));
+            if (fresh && (frames == 1 || time - lastProbe >= 5_000_000_000L)) {
+                lastProbe = time;
+                diagnose(renderer, input, output, genesis, lumen);
+            }
             return true;
         } catch (RuntimeException unavailable) {
-            deleteOwnedNames();
+            release();
+            context = current;
             failed = true;
-            Log.w("TSOA_FE_DIAG", "Scene reconstruction bypassed: " + unavailable.getMessage());
+            renderer.logGraphics("Scene GPU bypassed: " + unavailable.getMessage());
             return false;
         } finally {
             for (int i = 3; i >= 0; i--) bind(i, 0);
@@ -150,23 +202,17 @@ final class SceneReconstruction {
         }
     }
 
-    private void deleteOwnedNames() {
-        if (context != null && context.equals(EGL14.eglGetCurrentContext())) {
-            GLES20.glDeleteFramebuffers(1, scoreFramebuffer, 0);
-            GLES20.glDeleteTextures(textures.length, textures, 0);
-            if (recognize != null) recognize.destroy();
-            if (reconstruct != null) reconstruct.destroy();
-        }
-        scoreFramebuffer[0] = 0;
-        Arrays.fill(textures, 0);
-        recognize = reconstruct = null;
-    }
-
     void release() {
-        deleteOwnedNames();
+        if (context != null && context.equals(EGL14.eglGetCurrentContext())) {
+            for (RenderTarget target : new RenderTarget[]{reference, nextReference, structure, nextStructure, score, probe})
+                if (target != null) target.destroy();
+            for (Pass pass : new Pass[]{capture, recognize, estimate, reconstruct, measure})
+                if (pass != null) pass.destroy();
+        }
+        reference = nextReference = structure = nextStructure = score = probe = null;
+        capture = recognize = estimate = reconstruct = measure = null;
         context = null;
-        profile = null;
-        lastRecognizedTime = Long.MIN_VALUE;
+        frames = analyses = 0;
         failed = false;
     }
 }

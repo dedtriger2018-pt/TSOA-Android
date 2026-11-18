@@ -204,17 +204,5 @@
     <string name="tsoa_scene_low">Low</string>
     <string name="tsoa_scene_medium">Medium</string>
     <string name="tsoa_scene_ultra">Ultra</string>
-    <string name="tsoa_scene_detail">Create a scene profile or import a .tscene file. When the background matches, Genesis animates marked areas and Lumen lights them using depth and material maps.</string>
-    <string name="tsoa_scene_checking">Checking scene profile…</string>
-    <string name="tsoa_scene_missing">No scene profile installed.</string>
-    <string name="tsoa_scene_invalid">Unreadable profile. Import a fresh copy.</string>
-    <string name="tsoa_scene_ready">Profile installed · %1$d × %2$d map</string>
-    <string name="tsoa_scene_import">Import scene profile</string>
-    <string name="tsoa_scene_remove">Remove scene profile</string>
-    <string name="tsoa_scene_remove_message">Remove the profile from this device? You can import the file again.</string>
-    <string name="tsoa_scene_removed">Scene profile removed.</string>
-    <string name="tsoa_scene_import_failed">Check that this is a valid .tscene profile and that the device has free space.</string>
-    <string name="tsoa_scene_imported">Profile installed. Select a Genesis or Lumen level in Video.</string>
-    <string name="tsoa_scene_create">Create scene profile</string>
-    <string name="tsoa_scene_editor_save">Save and use this profile?</string>
+    <string name="tsoa_scene_detail">Genesis estimates relief and motion from the game itself. Lumen uses that relief to reconstruct lighting. Low-confidence scenes keep the original image.</string>
 </resources>

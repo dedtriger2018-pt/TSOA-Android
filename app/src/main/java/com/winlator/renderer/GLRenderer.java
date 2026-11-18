@@ -113,7 +113,10 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     }
 
     void logFrameGeneration(String detail) {
-        final String message = "Frame generation: " + detail;
+        logGraphics("Frame generation: " + detail);
+    }
+
+    void logGraphics(String message) {
         Log.i("TSOA_FE_DIAG", message);
         xServerView.post(() -> TsoaRedirectorV2Log.append(xServerView.getContext(), message));
     }
@@ -213,10 +216,15 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
             viewportNeedsUpdate = true;
         }
 
-        if (effectComposer.hasEffects()) {
-            effectComposer.render();
+        if (!effectComposer.hasEffects()) {
+            drawFrame();
+            return;
         }
-        else drawFrame();
+        boolean separateCursor = effectComposer.reconstructsGameScene();
+        omitCursorFromScene = separateCursor;
+        try { effectComposer.render(); }
+        finally { omitCursorFromScene = false; }
+        if (separateCursor) drawFrameGenerationCursor();
     }
 
     private void bypassFrameGeneration(String reason) {

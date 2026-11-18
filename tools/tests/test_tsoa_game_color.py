@@ -267,15 +267,11 @@ public class TsoaGameColorCheck {
 # Trace the actual Java helper/composer without an Android runtime. The separate
 # GLES runner checks the exact production shaders on a real surfaceless context.
 LIFECYCLE_STUBS = {
-    "com/winlator/renderer/SceneProfile.java": """
-package com.winlator.renderer;
-public class SceneProfile { public int sourceWidth,sourceHeight; }
-""",
     "com/winlator/renderer/SceneReconstruction.java": """
 package com.winlator.renderer;
 class SceneReconstruction {
-    boolean available(SceneProfile s,int w,int h){return true;}
-    boolean draw(SceneProfile s,int g,int l,GLRenderer r,int in,int out,int x,int y,int w,int h){
+    boolean available(int w,int h){return true;}
+    boolean draw(int g,int l,GLRenderer r,int in,RenderTarget out,int x,int y,int w,int h){
         throw new AssertionError("Reconstruction disabled in legacy filters test");
     }
     void release(){}

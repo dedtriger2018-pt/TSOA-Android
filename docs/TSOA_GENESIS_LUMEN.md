@@ -1,79 +1,78 @@
-# Gênesis e Lumen no TSOA_FE
+# Gênesis e Lumen automáticos
 
-A implementação parte do commit estável `1ccdda4`. Os dois módulos atuam na
-imagem do jogo e começam desligados. Cada um tem controle independente em
-**Configurações → Vídeo**. O controle de intensidade vale para o perfil ativo.
+Em **Configurações → Vídeo**, escolha Desligado, Baixo, Intermediário ou Ultra
+para cada motor e inicie o jogo. As preferências do APK anterior são
+reaproveitadas. Os efeitos vêm desligados em novas instalações.
 
-## Preparar uma cena
+## Dados e reconstrução
 
-1. Capture um fundo do jogo com o enquadramento em que pretende jogar. Recorte
-   as barras externas do emulador e mantenha as barras desenhadas pelo jogo.
-2. Abra **Configurações → Vídeo → Criar perfil de cena** e selecione a captura.
-   Marque regiões do ambiente e ajuste profundidade, movimento e reflexividade
-   antes de desenhar cada região. Deixe rostos, diálogos e menus fora das áreas
-   marcadas.
-3. Toque em **Usar este perfil** e confirme. Ative Gênesis, Lumen ou ambos.
-   Use a mesma cena e proporção da captura para observar o resultado.
+O editor, a importação e o formato de perfil manual foram removidos. A fonte
+é o quadro real da janela do jogo. O renderizador X11 recebe texturas de
+`Drawable` do Wine. A composição do Unity já chegou a essas texturas como
+imagem 2D. Personagens, geometria, materiais e HUD do Unity não chegam como
+camadas separadas. O importador valida os arquivos do Unity, mas não fornece
+uma correspondência entre assets originais e o quadro em execução. A
+implementação trabalha com essa imagem disponível, sem acessar arquivos do
+jogo durante a análise.
 
-O editor funciona offline no Android System WebView. Seu HTML também abre num
-navegador para exportar um `.tscene` importável pelo seletor de arquivos. O
-editor reconhece por SHA-256 uma [captura promocional da Steam](https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1672670/ss_17bc9df3256880afd4e94574095044ab4c50ad5b.1920x1080.jpg?t=1791019289)
-e sugere uma marcação na janela. A correspondência no jogo ainda depende do
-enquadramento e das sobreposições.
+- Uma captura reduzida, de até 192 pixels no eixo maior, alimenta ambos os
+  motores. Gradientes, contraste regional e posição produzem estimativas de
+  relevo e contornos. Os canais auxiliares guardam tendência especular e
+  estabilidade local. O Lumen calcula normais do gradiente de relevo.
+- O reconhecimento amostra 40 regiões por quadro real. Mudanças globais
+  suspendem a reconstrução e fazem a próxima análise substituir o cache. Em
+  regiões estáveis, os mapas anteriores reduzem variações de relevo e
+  material. O cache em memória retém os mapas corrente e anterior e usa
+  menos de 600 KiB. Repetições do mesmo quadro reaproveitam o cache. A
+  análise aquece em intervalos de 48 ms e depois usa intervalos de 88 a
+  140 ms, conforme o preset mais alto dos dois motores.
+- Gênesis desloca amostras de acordo com o relevo. A comparação com o
+  quadro real protege contornos, regiões em transição e o destino dos
+  deslocamentos. Lumen estima a posição da luz a partir das áreas mais
+  claras e usa a orientação das superfícies para reconstruir a resposta
+  luminosa. Intermediário acrescenta especular e oclusão local. Ultra
+  acrescenta três amostras de sombra de contato.
+- A máscara protege bordas, área de diálogos, detalhes de alto contraste
+  e regiões com discrepância temporal. Tons quentes típicos de pele
+  reduzem a intensidade. A proteção é heurística. Textos ou personagens
+  já compostos com o fundo, especialmente áreas lisas e estáticas, podem
+  receber parte do efeito.
+- A imagem entra nessa etapa depois do EASU, quando FSR está ativo, e
+  segue para FXAA, nitidez, Bloom e HDR simulado. Frame Generation recebe
+  o resultado apenas ao capturar um quadro real. Seus quadros sintéticos
+  seguem direto para apresentação. O cursor do emulador é composto à parte.
 
-Para preparar com mapas em escala de cinza, instale Pillow 9.1 ou superior e
-use imagens alinhadas com a referência sRGB opaca.
+Profundidade e materiais são inferidos do quadro 2D. O resultado é uma
+aproximação de relevo, sem profundidade geométrica métrica ou identificação
+semântica garantida. Cenas planas, pouco informativas ou com mudanças fortes
+podem manter a imagem original. Falhas de shader ou framebuffer também
+devolvem o controle ao caminho de renderização normal.
+
+## Diagnóstico do pipeline gráfico
+
+O APK `91ab403` podia desenhar um quadro idêntico mesmo com os shaders
+executados. O reconhecimento exigia que uma proporção alta de pontos
+coincidisse com a referência importada, e o shader rejeitava ainda mais
+regiões quando a cor local divergia. Essa condição foi removida ao passar
+a construir a referência temporal a partir dos próprios quadros. Sem
+diagnóstico daquela sessão no Honor, a causa exata do sintoma continua
+indeterminada.
+
+O visor `TSOA_FE_DIAG` e o registro de diagnóstico do launcher recebem
+`Scene GPU draw` no primeiro quadro e a cada cinco segundos de quadros
+reais. Um shader compara a textura de entrada com a de saída e escreve uma
+amostra de 8×4 para leitura de 128 bytes. O log inclui presets (`g` e `l`),
+`analyses`, `confidence8`, `cut8`, `changedCells` e `maxDelta8`. Um valor
+positivo de `changedCells` prova uma alteração maior que 1/255 em pelo menos
+uma das regiões amostradas, antes do Bloom e HDR. `Scene GPU bypassed`
+identifica falhas. A leitura da GPU é periódica para evitar sincronização
+por quadro.
 
 ```sh
-python tools/prepare_tsoa_scene.py --reference fundo.png --depth profundidade.png \
-  --mask area-permitida.png --motion movimento.png --reflectivity material.png \
-  --output cena.tscene
+adb logcat -d -s TSOA_FE_DIAG:I | grep -E 'Scene GPU|Scene reconstruction'
 ```
 
-Branco na profundidade representa regiões próximas. Preto na máscara protege
-o conteúdo. Movimento e reflexividade são opcionais e começam zerados.
-O perfil contém a miniatura da referência. Mantenha-o com a sua cópia do jogo.
-
-## Renderização e limites
-
-- Gênesis produz deslocamentos sutis nos planos autorizados, ponderados pela
-  profundidade e pelo mapa de movimento. Usa o tempo do conteúdo real como
-  fase e verifica a origem e o destino da amostra. Em quadros estáticos,
-  mantém a fase e reaproveita a confiança da cena.
-- Lumen deriva normais locais do mapa de profundidade. Baixo aplica luz
-  direcional. Intermediário acrescenta especular por material e oclusão
-  local. Ultra acrescenta até quatro amostras de sombra direcional de contato
-  e uma contribuição indireta de cor. Os ajustes são limitados para
-  preservar a iluminação desenhada na arte.
-- O compositor compara 24 pontos do quadro real com a miniatura numa
-  textura de 1×1. Máscara, correspondência local e profundidade reduzem
-  interferência nas sobreposições. Em cenas incompatíveis, o passo devolve
-  os pixels de entrada. Para proteger uma área crítica, exclua-a ao criar o
-  perfil. Sem perfil, com os módulos desligados ou em caso de falha de
-  inicialização, o compositor segue pelo caminho habitual.
-- A composição vem depois do EASU do FSR, quando ativo, e antes de FXAA,
-  nitidez, Bloom e HDR simulado. O Frame Generation recebe os quadros
-  processados. Seus quadros sintéticos ficam fora da identificação de cenas.
-- O protótipo usa um perfil por vez. As regiões são marcadas manualmente.
-  As imagens compostas disponíveis ao Winlator permitem estimar iluminação
-  superficial, com limitações de enquadramento e oclusão. Reconstrução
-  automática de personagens e geometria, preenchimento de oclusões e
-  iluminação volumétrica continuam em aberto.
-
-O formato v1 usa cabeçalho big-endian de 24 bytes (`TSOSCENE`, versão,
-dimensões originais e dimensões reduzidas), duas imagens RGBA8 em ordem
-de linhas a partir do topo, e SHA-256 de cabeçalho e imagens. A estrutura
-usa profundidade, movimento, reflexividade e máscara nos canais R, G, B e A.
-A resolução reduzida é limitada a 256 por eixo. O modo offline guarda um
-perfil privado com no máximo 524.344 bytes em `noBackupFilesDir`, com troca
-atômica. **Remover perfil** libera esse espaço. Os mapas são enviados à GPU
-na entrada da sessão e quando o perfil ou contexto muda.
-
-## Validação
-
-Os testes em `tools/tests/test_tsoa_scene_*.py` cobrem o formato, o editor
-offline, a troca atômica de perfil e sessão, o fallback e a composição GLES.
-Há testes com cenas sintéticas para efeitos independentes e proteção de
-regiões, além de comparação local com capturas promocionais. A validação no
-Honor X8 ainda é necessária para verificar o WebView, o enquadramento das
-cenas reais e o custo dos presets na Adreno 610.
+O teste GLES `tools/tests/test_tsoa_scene_gpu.py` compila os cinco shaders
+de produção, compara pixels, mede as saídas em todos os presets, verifica
+áreas protegidas e confirma recuperação automática após um corte. O teste
+de desempenho e a inspeção visual no Honor X8 dependem do aparelho.

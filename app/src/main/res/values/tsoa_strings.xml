@@ -204,17 +204,5 @@
     <string name="tsoa_scene_low">Baixo</string>
     <string name="tsoa_scene_medium">Intermediário</string>
     <string name="tsoa_scene_ultra">Ultra</string>
-    <string name="tsoa_scene_detail">Crie um perfil de cena ou importe um arquivo .tscene. Gênesis anima as áreas marcadas e Lumen usa os mapas de profundidade e material para iluminar essas áreas quando o fundo é reconhecido.</string>
-    <string name="tsoa_scene_checking">Verificando o perfil…</string>
-    <string name="tsoa_scene_missing">Nenhum perfil de cena instalado.</string>
-    <string name="tsoa_scene_invalid">Perfil ilegível. Importe uma nova cópia.</string>
-    <string name="tsoa_scene_ready">Perfil instalado · mapa de %1$d × %2$d</string>
-    <string name="tsoa_scene_import">Importar perfil de cena</string>
-    <string name="tsoa_scene_remove">Remover perfil de cena</string>
-    <string name="tsoa_scene_remove_message">Remover o perfil deste aparelho? Você pode importar o arquivo novamente.</string>
-    <string name="tsoa_scene_removed">Perfil removido.</string>
-    <string name="tsoa_scene_import_failed">Confira se o arquivo é um perfil .tscene válido e se há espaço livre.</string>
-    <string name="tsoa_scene_imported">Perfil instalado. Escolha o nível de Gênesis ou Lumen em Vídeo.</string>
-    <string name="tsoa_scene_create">Criar perfil de cena</string>
-    <string name="tsoa_scene_editor_save">Salvar e usar este perfil?</string>
+    <string name="tsoa_scene_detail">Gênesis estima relevo e movimento do próprio jogo. Lumen usa esse relevo para recriar iluminação. Cenas com baixa confiança mantêm a imagem original.</string>
 </resources>
