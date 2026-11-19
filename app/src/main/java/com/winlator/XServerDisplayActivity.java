@@ -69,6 +69,7 @@ import com.winlator.inputcontrols.ExternalController;
 import com.winlator.inputcontrols.InputControlsManager;
 import com.winlator.math.Mathf;
 import com.winlator.renderer.GLRenderer;
+import com.winlator.renderer.CinematicSettings;
 import com.winlator.services.ForegroundService;
 import com.winlator.tsoa.TsoaOptions;
 import com.winlator.tsoa.TsoaSceneSession;
@@ -676,9 +677,16 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         if (!dedicatedLauncherMode || tsoaOptions == null || xServerView == null) return;
         boolean original = tsoaOptions.isOriginalMode();
         xServerView.getRenderer().effectComposer.configurePresentation(original,
-                tsoaOptions.getCinematicLevel(), tsoaOptions.getCinematicAmount(), tsoaOptions.isCinematicVignette(),
-                tsoaOptions.isCinematicGrain(), tsoaOptions.getBeyondMode(), tsoaOptions.getBeyondAmount(),
-                tsoaOptions.getBeyondBlur(), tsoaOptions.getBeyondBrightness(), tsoaOptions.getBeyondSaturation());
+                tsoaOptions.getBeyondMode(), tsoaOptions.getBeyondAmount(), tsoaOptions.getBeyondBlur(),
+                tsoaOptions.getBeyondBrightness(), tsoaOptions.getBeyondSaturation());
+        xServerView.getRenderer().effectComposer.configureOptics(new CinematicSettings(
+                tsoaOptions.getCinematicLevel(), tsoaOptions.getCinematicAmount(),
+                tsoaOptions.isCinematicAnamorphic() ? tsoaOptions.getAnamorphicAmount() : 0,
+                tsoaOptions.isCinematicFocus() ? tsoaOptions.getFocusAmount() : 0,
+                tsoaOptions.isCinematicHalation() ? tsoaOptions.getHalationAmount() : 0,
+                tsoaOptions.isCinematicGrain() ? tsoaOptions.getGrainAmount() : 0,
+                tsoaOptions.isCinematicVignette() ? tsoaOptions.getVignetteAmount() : 0,
+                tsoaOptions.getGrainSize(), tsoaOptions.getGrainResponse()));
         int mode = original ? 0 : tsoaOptions.getGameHdrMode();
         // A singleTask game activity may be resumed after a lobby setting changes.
         // Keep manual screen effects intact when the lobby preference is unchanged.
@@ -734,7 +742,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             performanceMonitor = new TsoaPerformanceMonitor(this, renderer, rootView);
             if (tsoaOptions.isPdaEnabled()) {
                 pdaButton = new android.widget.Button(this);
-                pdaButton.setText("PDA");
+                pdaButton.setText(com.winlator.tsoa.TsoaMenuLanguage.get(this, R.string.tsoa_pda_short));
                 pdaButton.setAllCaps(false);
                 pdaButton.setTextSize(12);
                 pdaButton.setAlpha(0.78f);

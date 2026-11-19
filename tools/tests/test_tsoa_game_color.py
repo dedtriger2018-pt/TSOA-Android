@@ -271,19 +271,31 @@ LIFECYCLE_STUBS = {
 package com.winlator.renderer;
 class PresentationEffects {
     public void release() {}
-    public boolean draw(GLRenderer r,RenderTarget input,int output,int x,int y,int w,int h,
-                        int quality,float amount,float first,float second) {return false;}
     public boolean drawBorders(GLRenderer r,RenderTarget input,int output,int x,int y,int w,int h,
                int quality,long revision,float amount,float blur,float brightness,float saturation) {return false;}
+}
+""",
+    "com/winlator/renderer/OpticalEffects.java": """
+package com.winlator.renderer;
+class OpticalEffects {
+    static final int SKIPPED=0, PRESENTED=1, NEEDS_COPY=2;
+    static int calls, lastDepth, lastBloom;
+    public void release() {}
+    public int draw(GLRenderer r, RenderTarget input, RenderTarget alternate, int output,
+            int x,int y,int w,int h,CinematicSettings settings,int quality,int depth,int score,int bloom,long revision) {
+        calls++; lastDepth=depth; lastBloom=bloom; return SKIPPED;
+    }
 }
 """,
     "com/winlator/renderer/SceneReconstruction.java": """
 package com.winlator.renderer;
 class SceneReconstruction {
     static int lastGenesis=-1,lastLumen=-1;
+    int depthTexture(){return 1;}
+    int confidenceTexture(){return 2;}
     boolean available(int w,int h){return true;}
     boolean draw(int g,int l,GLRenderer r,int in,RenderTarget out,int x,int y,int w,int h){
-        lastGenesis=g; lastLumen=l; return false;
+        lastGenesis=g; lastLumen=l; return out==null;
     }
     void release(){}
 }
@@ -556,7 +568,7 @@ def run_lifecycle(java, production):
             "-d", str(classes), *map(str, sorted(sources.rglob("*.java"))),
             *[str(production / relative) for relative in [
                 "renderer/effects/Effect.java", "renderer/effects/ColorEffect.java",
-                "renderer/EffectComposer.java", "renderer/SoftBloom.java", "tsoa/TsoaGameColor.java",
+                "renderer/EffectComposer.java","renderer/CinematicSettings.java", "renderer/SoftBloom.java", "tsoa/TsoaGameColor.java",
                 "renderer/SpatialUpscaler.java", "renderer/SpatialShaders.java",
                 "renderer/effects/FXAAEffect.java", "renderer/effects/SharpeningEffect.java",
             ]],

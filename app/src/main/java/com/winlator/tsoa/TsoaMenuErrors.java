@@ -54,6 +54,12 @@ public final class TsoaMenuErrors {
             case "O provedor de arquivos não retornou o conteúdo da pasta.": return TsoaMenuLanguage.get(context, R.string.tsoa_error_provider_empty);
             case "A importação foi interrompida para evitar que o armazenamento do celular fique sem espaço.": return TsoaMenuLanguage.get(context, R.string.tsoa_error_import_storage_stop);
             case "Sem permissão para ler a pasta selecionada.": return TsoaMenuLanguage.get(context, R.string.tsoa_error_read_permission);
+            case "Chronos capacity": return TsoaMenuLanguage.get(context, R.string.tsoa_error_chronos_capacity);
+            case "Chronos directory": return TsoaMenuLanguage.get(context, R.string.tsoa_error_chronos_directory);
+            case "Saves changed during checkpoint": return TsoaMenuLanguage.get(context, R.string.tsoa_error_chronos_changed);
+            case "Checkpoint has branches": return TsoaMenuLanguage.get(context, R.string.tsoa_error_chronos_branches);
+            case "Missing checkpoint": return TsoaMenuLanguage.get(context, R.string.tsoa_error_chronos_missing);
+            case "Checkpoint file limit": return TsoaMenuLanguage.get(context, R.string.tsoa_error_chronos_file_limit);
             default: break;
         }
         if (message.startsWith(RESTORE_INTERRUPTED)) {

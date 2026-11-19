@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="tsoa_editor_types">
+        <item>Button</item>
+        <item>D-pad</item>
+        <item>Key range</item>
+        <item>Analog stick</item>
+        <item>Trackpad</item>
+        <item>MIDI key</item>
+        <item>Radial menu</item>
+    </string-array>
+    <string-array name="tsoa_editor_shapes">
+        <item>Circle</item>
+        <item>Rectangle</item>
+        <item>Rounded rectangle</item>
+        <item>Square</item>
+    </string-array>
+    <string-array name="tsoa_editor_ranges">
+        <item>A to Z</item>
+        <item>0 to 9</item>
+        <item>F1 to F12</item>
+        <item>Numpad 0 to 9</item>
+    </string-array>
+</resources>

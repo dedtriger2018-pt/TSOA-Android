@@ -134,8 +134,8 @@ public class TsoaMenuLanguageCheck {
             Context scoped = TsoaMenuLanguage.context(base);
             Configuration translated = scoped.getResources().getConfiguration();
             require(scoped != base && translated != original, "Menu must have a separate configuration context");
-            require(translated.locale.toLanguageTag().equals(expected), "Wrong resource locale: " + saved);
-            require(translated.layoutLocale.toLanguageTag().equals(expected), "Wrong scoped layout locale: " + saved);
+            require(translated.locale.toLanguageTag().equals(expected.equals("pt") ? "pt-BR" : expected), "Wrong resource locale: " + saved);
+            require(translated.layoutLocale.toLanguageTag().equals(expected.equals("pt") ? "pt-BR" : expected), "Wrong scoped layout locale: " + saved);
             require(original.locale.equals(Locale.JAPANESE) && original.layoutLocale.equals(Locale.JAPANESE),
                     "Menu language changed the base configuration");
             require(Locale.getDefault().equals(processLocale), "Menu language changed the process locale");
@@ -184,6 +184,12 @@ def check_resources(repo):
         for name, value in values.items():
             assert format_signature(value) == format_signature(reference[name]), f"Format arguments differ: {locale}/{name}"
     assert strings["values-pt"] == reference, "Default resources must match explicit Portuguese"
+    arrays = {"tsoa_editor_types": 7, "tsoa_editor_shapes": 4, "tsoa_editor_ranges": 4}
+    for locale in locales:
+        path = repo / "app/src/main/res" / locale / "tsoa_editor.xml"
+        resource = ET.parse(path).getroot()
+        items = {item.attrib["name"]: len(item.findall("item")) for item in resource if item.tag == "string-array"}
+        assert {name: items.get(name) for name in arrays} == arrays, f"Control editor choices: {locale}"
     print(f"PASS: {len(reference)} native-menu keys across PT default/PT/EN/zh-CN, matching formats and complete translations")
 
 

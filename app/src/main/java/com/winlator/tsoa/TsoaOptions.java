@@ -68,8 +68,19 @@ public final class TsoaOptions {
     public boolean isPdaEnabled() { return enabled("game_pda"); }
     public int getCinematicLevel() { return getSceneLevel("game_cinematic"); }
     public int getCinematicAmount() { return percent("game_cinematic_amount", 75); }
-    public boolean isCinematicVignette() { return enabled("game_cinematic_vignette"); }
+    public boolean isCinematicVignette() { return preferences.getBoolean("game_cinematic_vignette", true); }
     public boolean isCinematicGrain() { return enabled("game_cinematic_grain"); }
+    public boolean isCinematicAnamorphic() { return preferences.getBoolean("game_cinematic_anamorphic", true); }
+    public boolean isCinematicHalation() { return preferences.getBoolean("game_cinematic_halation", true); }
+    public boolean isCinematicFocus() { return enabled("game_cinematic_focus"); }
+    public int getAnamorphicAmount() { return percent("game_cinematic_anamorphic_amount", 68); }
+    public int getHalationAmount() { return percent("game_cinematic_halation_amount", 58); }
+    public int getFocusAmount() { return percent("game_cinematic_focus_amount", 72); }
+    public int getVignetteAmount() { return percent("game_cinematic_vignette_amount", 67); }
+    public int getGrainAmount() { return percent("game_cinematic_grain_amount", 45); }
+    public int getGrainSize() { return percent("game_cinematic_grain_size", 27); }
+    public int getGrainResponse() { return percent("game_cinematic_grain_response", 30); }
+
     public int getBeyondMode() {
         int mode = preferences.getInt("game_beyond_mode", percent("game_beyond", 0) > 0 ? 2 : 0);
         return mode >= 0 && mode <= 2 ? mode : 0;

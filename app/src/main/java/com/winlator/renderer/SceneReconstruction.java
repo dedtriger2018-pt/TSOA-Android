@@ -76,6 +76,9 @@ final class SceneReconstruction {
         measure = new Pass(SceneShaders.probe()); compile(measure);
     }
 
+    int depthTexture() { return structure.getTextureId(); }
+    int confidenceTexture() { return score.getTextureId(); }
+
     boolean available(int width, int height) {
         return !failed || surfaceWidth != width || surfaceHeight != height
                 || !EGL14.eglGetCurrentContext().equals(context);
@@ -232,6 +235,7 @@ final class SceneReconstruction {
                 frames++;
             }
 
+            if (output == null) return true; // Adaptive Focus reuses analysis without moving or relighting pixels.
             if (lumen == 4 && !lumenReady && !analyzeLumen(renderer, input)) lumen = 3;
             prepare(reconstruct, output, surfaceWidth, surfaceHeight, input, reference.getTextureId(),
                     structure.getTextureId(), score.getTextureId());

@@ -225,7 +225,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         launcherHeader.setGravity(Gravity.CENTER_HORIZONTAL);
         launcherHeader.setPadding(0, dp(2), 0, dp(2));
         TextView title = new TextView(this);
-        title.setText("TSOA_FE");
+        title.setText(menuString(R.string.tsoa_brand));
         title.setTextColor(Color.rgb(213, 225, 224));
         title.setTextSize(16);
         title.setLetterSpacing(0.35f);
@@ -233,7 +233,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         title.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
         launcherHeader.addView(title, new LinearLayout.LayoutParams(-1, -2));
         TextView subtitle = new TextView(this);
-        subtitle.setText("The Street of Adrift");
+        subtitle.setText(menuString(R.string.tsoa_game_title));
         subtitle.setTextColor(Color.rgb(165, 182, 184));
         subtitle.setTextSize(10);
         subtitle.setLetterSpacing(0.15f);
@@ -463,6 +463,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                     }
                     Intent editor = new Intent(MainActivity.this, ControlsEditorActivity.class);
                     editor.putExtra("profile_id", profile.id);
+                    editor.putExtra("tsoa_menu", true);
                     startActivityForResult(editor, EDIT_INPUT_CONTROLS_REQUEST_CODE);
                 }
                 catch (Exception error) {

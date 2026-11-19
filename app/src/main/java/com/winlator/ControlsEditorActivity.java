@@ -45,13 +45,16 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
     private InputControlsView inputControlsView;
     private ControlsProfile profile;
     private View toolbox;
+    private Context editorContext;
 
     @Override
     public void onCreate(Bundle bundle) {
         AppUtils.setActivityTheme(this);
         super.onCreate(bundle);
         AppUtils.hideSystemUI(this);
-        setContentView(R.layout.controls_editor_activity);
+        editorContext = getIntent().getBooleanExtra("tsoa_menu", false)
+                ? com.winlator.tsoa.TsoaMenuLanguage.context(this) : this;
+        setContentView(editorInflater().inflate(R.layout.controls_editor_activity, null));
 
         inputControlsView = new InputControlsView(this);
         inputControlsView.setEditMode(true);
@@ -99,6 +102,15 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         super.attachBaseContext(LocaleHelper.setSystemLocale(newBase));
     }
 
+    private LayoutInflater editorInflater() {
+        LayoutInflater inflater = LayoutInflater.from(this);
+        return editorContext == this ? inflater : inflater.cloneInContext(editorContext);
+    }
+
+    private String[] editorEntries(int resource, String[] fallback) {
+        return editorContext == this ? fallback : editorContext.getResources().getStringArray(resource);
+    }
+
     private void moveToolbox(float x, float y) {
         final int padding = (int)UnitUtils.dpToPx(8);
         ViewGroup parent = (ViewGroup)toolbox.getParent();
@@ -117,12 +129,12 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
         switch (v.getId()) {
             case R.id.BTAddElement:
                 if (!inputControlsView.addElement()) {
-                    AppUtils.showToast(this, R.string.no_profile_selected);
+                    AppUtils.showToast(this, editorContext.getString(R.string.no_profile_selected));
                 }
                 break;
             case R.id.BTRemoveElement:
                 if (!inputControlsView.removeElement()) {
-                    AppUtils.showToast(this, R.string.no_control_element_selected);
+                    AppUtils.showToast(this, editorContext.getString(R.string.no_control_element_selected));
                 }
                 break;
             case R.id.BTElementSettings:
@@ -130,14 +142,14 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
                 if (selectedElement != null) {
                     showControlElementSettings(v);
                 }
-                else AppUtils.showToast(this, R.string.no_control_element_selected);
+                else AppUtils.showToast(this, editorContext.getString(R.string.no_control_element_selected));
                 break;
         }
     }
 
     private void showControlElementSettings(View anchorView) {
         final ControlElement element = inputControlsView.getSelectedElement();
-        final View view = LayoutInflater.from(this).inflate(R.layout.control_element_settings, null);
+        final View view = editorInflater().inflate(R.layout.control_element_settings, null);
 
         final Runnable updateLayout = () -> {
             ControlElement.Type type = element.getType();
@@ -261,7 +273,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
     }
 
     private void loadTypeSpinner(final ControlElement element, Spinner spinner, final Runnable callback) {
-        spinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, ControlElement.Type.names()));
+        spinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, editorEntries(R.array.tsoa_editor_types, ControlElement.Type.names())));
         spinner.setSelection(element.getType().ordinal(), false);
         spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
@@ -280,7 +292,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
     }
 
     private void loadShapeSpinner(final ControlElement element, Spinner spinner) {
-        spinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, ControlElement.Shape.names()));
+        spinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, editorEntries(R.array.tsoa_editor_shapes, ControlElement.Shape.names())));
         spinner.setSelection(element.getShape().ordinal(), false);
         spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
@@ -320,7 +332,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
     }
 
     private void loadBindingSpinner(final ControlElement element, final LinearLayout container, final int index, int titleResId) {
-        View view = LayoutInflater.from(this).inflate(R.layout.binding_field, container, false);
+        View view = editorInflater().inflate(R.layout.binding_field, container, false);
 
         LinearLayout titleBar = view.findViewById(R.id.LLTitleBar);
         if (titleResId > 0) {
@@ -413,7 +425,7 @@ public class ControlsEditorActivity extends AppCompatActivity implements View.On
     }
 
     private void loadRangeSpinner(final ControlElement element, Spinner spinner) {
-        spinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, ControlElement.Range.names()));
+        spinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, editorEntries(R.array.tsoa_editor_ranges, ControlElement.Range.names())));
         spinner.setSelection(element.getRange().ordinal(), false);
         spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override

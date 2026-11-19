@@ -30,6 +30,13 @@ public final class TsoaSpatialOptionsCheck {
         }
         context.values.put("game_genesis_level", 4);
         require(options.getGenesisLevel() == 0, "Ultra+ leaked into Genesis choices");
+        require(options.getCinematicLevel()==0, "Cinematic must default Off");
+        require(options.isCinematicVignette() && !options.isCinematicFocus(), "safe new effect defaults");
+        context.values.put("game_cinematic_vignette", false);
+        context.values.put("game_cinematic_grain", true);
+        context.values.put("game_cinematic_grain_amount", 200);
+        require(!options.isCinematicVignette() && options.isCinematicGrain() && options.getGrainAmount()==100,
+                "saved grain/vignette switches and intensity bounds");
         require(!options.isGameFxaaEnabled(), "FXAA must default Off");
         require(!options.isGameFsrEnabled(), "FSR must default Off");
         require(options.getGameSharpeningStrength() == 0, "Sharpening must default Off");
@@ -132,12 +139,12 @@ public final class SpatialLifecycleCheck {
                 "Final HDR/Bloom/spatial composite escaped the requested frame-history target");
 
         int originalNativeCaptures=renderer.nativeCaptures;
-        renderer.effectComposer.configurePresentation(true,3,75,true,true,2,60,30,70,40);
+        renderer.effectComposer.configurePresentation(true,2,60,30,70,40);
         GLES20.draws.clear();
         renderer.frame();
         require(GLES20.draws.isEmpty()&&renderer.nativeCaptures==originalNativeCaptures,
                 "Original Mode retained optional passes");
-        renderer.effectComposer.configurePresentation(false,0,75,false,false,0,0,30,70,40);
+        renderer.effectComposer.configurePresentation(false,0,0,30,70,40);
         GLES20.draws.clear();
         renderer.frame();
         require(easu(0)&&fxaa(1)&&rcas(2)&&color.isBloomEnabled()&&color.getHdrStrength()==1.0f,
@@ -156,6 +163,18 @@ public final class SpatialLifecycleCheck {
         require(SceneReconstruction.lastGenesis==1&&SceneReconstruction.lastLumen==4,
                 "Genesis Ultra+ independent selection lost");
         renderer.effectComposer.configureReconstruction(0,0);
+
+        renderer.effectComposer.configureOptics(new CinematicSettings(3,100,70,80,60,30,50,33,21));
+        renderer.frame();
+        require(OpticalEffects.calls==1&&OpticalEffects.lastDepth==1&&OpticalEffects.lastBloom!=0,
+                "Cinematic failed to reuse structure and Bloom with Genesis and Lumen Off");
+        require(SceneReconstruction.lastGenesis==0&&SceneReconstruction.lastLumen==0,
+                "Adaptive Focus must not enable Genesis movement or Lumen illumination");
+        renderer.effectComposer.configurePresentation(true,0,0,30,70,40);
+        renderer.frame();
+        require(OpticalEffects.calls==1,"Original Mode retained the optical pass");
+        renderer.effectComposer.configurePresentation(false,0,0,30,70,40);
+        renderer.effectComposer.configureOptics(CinematicSettings.OFF);
 
         // Native-resolution FSR alone must bypass allocation and capture entirely.
         GLRenderer nativeRenderer=new GLRenderer();
@@ -209,7 +228,7 @@ def run_lifecycle(java, root):
         classes.mkdir()
         names = ['renderer/effects/Effect.java','renderer/effects/ColorEffect.java',
                  'renderer/effects/FXAAEffect.java','renderer/effects/SharpeningEffect.java',
-                 'renderer/EffectComposer.java','renderer/SpatialUpscaler.java','renderer/SpatialShaders.java',
+                 'renderer/EffectComposer.java','renderer/CinematicSettings.java','renderer/SpatialUpscaler.java','renderer/SpatialShaders.java',
                  'renderer/SoftBloom.java','tsoa/TsoaGameColor.java']
         subprocess.run([java,'-m','jdk.compiler/com.sun.tools.javac.Main','-source','8','-target','8',
                         '-Xlint:-options','-d',str(classes),*map(str,sorted(sources.rglob('*.java'))),

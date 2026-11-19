@@ -84,7 +84,7 @@ public final class TsoaOptionsDialog {
         shell.setBackground(surface);
 
         int[] titles = {R.string.tsoa_options, R.string.tsoa_video, R.string.tsoa_controls,
-                R.string.tsoa_mouse, R.string.tsoa_audio, R.string.tsoa_ambience, R.string.tsoa_comfort, R.string.tsoa_files};
+                R.string.tsoa_mouse, R.string.tsoa_audio, R.string.tsoa_ambience, R.string.tsoa_comfort, R.string.tsoa_files, R.string.tsoa_cinematic};
         TextView heading = text(s(titles[page]), 20, TEXT);
         heading.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
         heading.setPadding(0, dp(12), 0, dp(12));
@@ -107,13 +107,14 @@ public final class TsoaOptionsDialog {
             case 5: ambience(); break;
             case 6: comfort(); break;
             case 7: files(); break;
+            case 8: opticalSettings(); break;
             default: overview(); break;
         }
 
         Button close = button(page == 0 ? s(R.string.tsoa_close) : s(R.string.tsoa_back));
         close.setOnClickListener(view -> {
             if (page == 0) dialog.dismiss();
-            else showPage(0);
+            else showPage(page == 8 ? 1 : 0);
         });
         shell.addView(close, new LinearLayout.LayoutParams(-1, dp(48)));
         dialog.setContentView(shell);
@@ -190,10 +191,7 @@ public final class TsoaOptionsDialog {
                 new int[]{0, 1, 2, 3, 4}, options.getLumenLevel());
         note(s(R.string.tsoa_lumen_ultra_plus_detail));
         note(s(R.string.tsoa_scene_detail));
-        intChoice(s(R.string.tsoa_cinematic), "game_cinematic", levels, valuesByLevel, options.getCinematicLevel());
-        slider(s(R.string.tsoa_cinematic_amount), "game_cinematic_amount", 0, 100, options.getCinematicAmount(), false, "%");
-        toggle(s(R.string.tsoa_cinematic_vignette), "", "game_cinematic_vignette", options.isCinematicVignette());
-        toggle(s(R.string.tsoa_cinematic_grain), "", "game_cinematic_grain", options.isCinematicGrain());
+        action(s(R.string.tsoa_cinematic), s(R.string.tsoa_cinematic_summary), () -> showPage(8), false);
         intChoice(s(R.string.tsoa_beyond_title), "game_beyond_mode", new String[]{
                 s(R.string.tsoa_off), s(R.string.tsoa_beyond_black), s(R.string.tsoa_beyond_ambient)},
                 new int[]{0, 1, 2}, options.getBeyondMode());
@@ -206,6 +204,33 @@ public final class TsoaOptionsDialog {
         toggle(s(R.string.tsoa_perf), s(R.string.tsoa_perf_detail), "game_performance", options.isPerformanceVisible());
         note(s(R.string.tsoa_game_filters_detail));
         note(s(R.string.tsoa_resolution_detail));
+    }
+
+    private void opticalSettings() {
+        intChoice(s(R.string.tsoa_cinematic_preset), "game_cinematic",
+                new String[]{s(R.string.tsoa_off), s(R.string.tsoa_scene_low), s(R.string.tsoa_scene_medium), s(R.string.tsoa_scene_ultra)},
+                new int[]{0, 1, 2, 3}, options.getCinematicLevel());
+        slider(s(R.string.tsoa_cinematic_amount), "game_cinematic_amount", 0, 100, options.getCinematicAmount(), false, "%");
+        opticalEffect("anamorphic", R.string.tsoa_cinematic_anamorphic, R.string.tsoa_cinematic_anamorphic_detail,
+                options.isCinematicAnamorphic(), options.getAnamorphicAmount());
+        opticalEffect("focus", R.string.tsoa_cinematic_focus, R.string.tsoa_cinematic_focus_detail,
+                options.isCinematicFocus(), options.getFocusAmount());
+        opticalEffect("halation", R.string.tsoa_cinematic_halation, R.string.tsoa_cinematic_halation_detail,
+                options.isCinematicHalation(), options.getHalationAmount());
+        opticalEffect("grain", R.string.tsoa_cinematic_grain, R.string.tsoa_cinematic_grain_detail,
+                options.isCinematicGrain(), options.getGrainAmount());
+        slider(s(R.string.tsoa_cinematic_grain_size), "game_cinematic_grain_size", 0, 100, options.getGrainSize(), false, "%");
+        slider(s(R.string.tsoa_cinematic_grain_response), "game_cinematic_grain_response", 0, 100, options.getGrainResponse(), false, "%");
+        note(s(R.string.tsoa_cinematic_grain_response_detail));
+        opticalEffect("vignette", R.string.tsoa_cinematic_vignette, R.string.tsoa_cinematic_vignette_detail,
+                options.isCinematicVignette(), options.getVignetteAmount());
+    }
+
+    private void opticalEffect(String key, int label, int detail, boolean enabled, int amount) {
+        String preference = "game_cinematic_" + key;
+        String caption = s(label);
+        toggle(caption, s(detail), preference, enabled);
+        slider(s(R.string.tsoa_cinematic_effect_amount, caption), preference + "_amount", 0, 100, amount, false, "%");
     }
 
     private void controls() {

@@ -63,7 +63,7 @@ final class ChronosTerminal {
         if (points.isEmpty()) {
             terminal.card(theme, terminal.s(R.string.tsoa_chronos_empty), "", TsoaTerminal.RED, null);
             theme.addView(terminal.button(terminal.s(R.string.tsoa_chronos_new), true, this::create));
-            terminal.page("Chronos", "", null, terminal.scroll(theme), null);
+            terminal.page(terminal.s(R.string.tsoa_chronos_terminal), "", null, terminal.scroll(theme), null);
             return;
         }
         graph = new Graph();
@@ -84,7 +84,7 @@ final class ChronosTerminal {
         inspector = terminal.column();
         updateInspector();
         LinearLayout body = terminal.panes(theme, terminal.scroll(inspector));
-        terminal.page("Chronos", terminal.s(R.string.tsoa_graph_count, points.size()), null, body, graph::stop);
+        terminal.page(terminal.s(R.string.tsoa_chronos_terminal), terminal.s(R.string.tsoa_graph_count, points.size()), null, body, graph::stop);
     }
 
     private void addTool(LinearLayout row, String title, String description, Runnable action) {

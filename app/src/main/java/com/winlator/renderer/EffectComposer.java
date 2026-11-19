@@ -42,24 +42,34 @@ public class EffectComposer {
     private boolean loggedFxaa, loggedFsr, loggedFsrActive;
     private int loggedSharpness = -1, loggedOutputWidth, loggedOutputHeight, loggedInputWidth, loggedInputHeight;
 
-    private boolean original, vignette, grain, presentationChanged;
-    private int cinematic, cinematicAmount, beyondMode, beyond, blur, brightness, saturation, qualityLimit = 3;
+    private boolean original, presentationChanged, opticsChanged;
+    private int beyondMode, beyond, blur, brightness, saturation, qualityLimit = 3;
     private PresentationEffects presentation;
+    private CinematicSettings cinematic = CinematicSettings.OFF;
+    private OpticalEffects optics;
+    private int frameBloomTexture;
     private boolean presentationOnlyBuffers;
 
-    public synchronized void configurePresentation(boolean original, int cinematic, int cinematicAmount,
-            boolean vignette, boolean grain, int beyondMode, int beyond, int blur, int brightness, int saturation) {
-        if (this.original == original && this.cinematic == cinematic && this.cinematicAmount == cinematicAmount
-                && this.vignette == vignette && this.grain == grain && this.beyondMode == beyondMode && this.beyond == beyond
+    public synchronized void configurePresentation(boolean original, int beyondMode, int beyond,
+                                                         int blur, int brightness, int saturation) {
+        if (this.original == original && this.beyondMode == beyondMode && this.beyond == beyond
                 && this.blur == blur && this.brightness == brightness && this.saturation == saturation) return;
-        presentationChanged |= this.original != original || this.cinematic != cinematic
-                || (this.cinematicAmount > 0) != (cinematicAmount > 0)
-                || this.beyondMode != beyondMode;
+        presentationChanged |= this.original != original || this.beyondMode != beyondMode;
+        opticsChanged |= this.original != original;
         this.original = original;
-        this.cinematic = cinematic; this.cinematicAmount = cinematicAmount;
-        this.vignette = vignette; this.grain = grain;
         this.beyondMode = beyondMode; this.beyond = beyond; this.blur = blur;
         this.brightness = brightness; this.saturation = saturation;
+        changedPresentation();
+    }
+
+    public synchronized void configureOptics(CinematicSettings settings) {
+        if (cinematic.sameAs(settings)) return;
+        opticsChanged = true;
+        cinematic = settings;
+        changedPresentation();
+    }
+
+    private void changedPresentation() {
         visualRevision++;
         renderer.xServerView.queueEvent(this::releaseChangedPresentation);
         renderer.xServerView.requestRender();
@@ -72,10 +82,21 @@ public class EffectComposer {
     }
 
     private synchronized void releaseChangedPresentation() {
-        if (!presentationChanged || EGL14.eglGetCurrentContext().equals(EGL14.EGL_NO_CONTEXT)) return;
-        if (presentation != null) presentation.release();
-        presentation = null;
-        if (original || (presentationOnlyBuffers && (cinematic == 0 || cinematicAmount == 0) && beyondMode == 0 && !canUseScene()
+        if ((!presentationChanged && !opticsChanged) || EGL14.eglGetCurrentContext().equals(EGL14.EGL_NO_CONTEXT)) return;
+        if (presentationChanged && presentation != null) {
+            presentation.release();
+            presentation = null;
+        }
+        if (opticsChanged && optics != null) {
+            optics.release();
+            optics = null;
+        }
+        if (reconstruction != null && genesisLevel == 0 && lumenLevel == 0
+                && (original || !cinematic.enabled() || cinematic.focus == 0)) {
+            reconstruction.release();
+            reconstruction = null;
+        }
+        if (original || ((presentationOnlyBuffers || reconstructionOnlyBuffers) && !cinematic.enabled() && beyondMode == 0 && !canUseScene()
                 && !gameFxaa && !gameFsr && gameSharpness == 0 && effects.isEmpty())) {
             if (EGL14.eglGetCurrentContext().equals(bufferContext)) {
                 if (readBuffer != null) readBuffer.destroy();
@@ -85,7 +106,7 @@ public class EffectComposer {
             sourceFramebufferChecked = sceneTargetsChecked = false;
             presentationOnlyBuffers = reconstructionOnlyBuffers = false;
         }
-        presentationChanged = false;
+        opticsChanged = presentationChanged = false;
     }
 
     private boolean canUseBeyond() {
@@ -117,7 +138,7 @@ public class EffectComposer {
         if (!sceneChanged || EGL14.eglGetCurrentContext().equals(EGL14.EGL_NO_CONTEXT)) return;
         if (reconstruction != null) reconstruction.release();
         reconstruction = null;
-        if (genesisLevel == 0 && lumenLevel == 0 && reconstructionOnlyBuffers && !gameFxaa && !gameFsr
+        if (genesisLevel == 0 && lumenLevel == 0 && reconstructionOnlyBuffers && !canUseScene() && !gameFxaa && !gameFsr
                 && gameSharpness == 0 && effects.isEmpty()) {
             if (EGL14.eglGetCurrentContext().equals(bufferContext)) {
                 if (readBuffer != null) readBuffer.destroy();
@@ -132,12 +153,12 @@ public class EffectComposer {
     }
 
     private boolean canUseScene() {
-        return !original && (genesisLevel > 0 || lumenLevel > 0)
+        return !original && (genesisLevel > 0 || lumenLevel > 0 || (cinematic.enabled() && cinematic.focus > 0))
                 && renderer.getMagnifierZoom() == 1f && !renderer.isScreenOffsetYRelativeToCursor()
                 && (reconstruction == null || reconstruction.available(renderer.surfaceWidth, renderer.surfaceHeight));
     }
 
-    synchronized boolean reconstructsGameScene() { return canUseScene(); }
+    synchronized boolean reconstructsGameScene() { return !original && (canUseScene() || cinematic.enabled()); }
 
     /** Preferences are applied independently of HDR/manual color controls. */
     public synchronized void configureSpatialFilters(boolean fxaa, boolean fsr, int sharpness) {
@@ -195,7 +216,7 @@ public class EffectComposer {
         releaseChangedScene();
         releaseChangedPresentation();
         if (original) return false;
-        return (cinematic > 0 && cinematicAmount > 0) || canUseBeyond() || canUseScene() || gameFxaa || (gameFsr && canUseFsr()) || gameSharpness > 0 || !effects.isEmpty();
+        return cinematic.enabled() || canUseBeyond() || canUseScene() || gameFxaa || (gameFsr && canUseFsr()) || gameSharpness > 0 || !effects.isEmpty();
     }
 
     /** Schedule resource destruction while the game surface's EGL context is current. */
@@ -247,6 +268,7 @@ public class EffectComposer {
                         renderer.surfaceWidth, renderer.surfaceHeight);
             }
             color.setBloomTextureAvailable(bloomTexture != 0);
+            frameBloomTexture = bloomTexture;
         }
         ScreenMaterial material = effect.getMaterial();
         material.use();
@@ -327,7 +349,8 @@ public class EffectComposer {
     /** Render the processed scene into a separate real-frame history target. */
     public synchronized void renderToFramebuffer(int outputFramebuffer) {
         boolean useScene = canUseScene();
-        boolean useCinematic = !original && cinematic > 0 && cinematicAmount > 0;
+        boolean useCinematic = !original && cinematic.enabled();
+        frameBloomTexture = 0;
         boolean useBeyond = !original && canUseBeyond();
         if ((useCinematic || useBeyond) && readBuffer == null)
             presentationOnlyBuffers = !useScene && !gameFxaa && !gameFsr && gameSharpness == 0 && effects.isEmpty();
@@ -392,19 +415,24 @@ public class EffectComposer {
         frameEffects.addAll(effects);
         // The input already has the fitted viewport (and EASU if active). Sharpening,
         // color and Bloom consume the reconstructed real frame before FG records it.
+        int depth = 0, sceneScore = 0;
         if (useScene && outWidth > 0 && outHeight > 0) {
             if (reconstruction == null) reconstruction = new SceneReconstruction();
             int effectiveLumen = qualityLimit == 3 ? lumenLevel : Math.min(lumenLevel, qualityLimit);
+            boolean drawLighting = genesisLevel > 0 || effectiveLumen > 0;
             if (reconstruction.draw(Math.min(genesisLevel, qualityLimit), effectiveLumen, renderer,
-                    readBuffer.getTextureId(), writeBuffer, outX, outY, outWidth, outHeight)) swapBuffers();
+                    readBuffer.getTextureId(), drawLighting ? writeBuffer : null,
+                    outX, outY, outWidth, outHeight)) {
+                if (drawLighting) swapBuffers();
+                depth = reconstruction.depthTexture();
+                sceneScore = reconstruction.confidenceTexture();
+            }
         }
-        if ((useCinematic || useBeyond) && (outWidth <= 0 || outHeight <= 0)) useCinematic = useBeyond = false;
-        if ((useCinematic || useBeyond) && presentation == null) presentation = new PresentationEffects();
-        if (useCinematic && presentation.draw(renderer, readBuffer, writeBuffer.getFramebuffer(),
-                outX, outY, outWidth, outHeight, Math.min(cinematic, qualityLimit),
-                cinematicAmount / 100f, vignette ? 1f : 0f, grain ? 1f : 0f)) swapBuffers();
+        if (outWidth <= 0 || outHeight <= 0) useCinematic = useBeyond = false;
+        // Ambient bars are built from the pre-optical image, so the vignette cannot darken them.
+        if (useBeyond && presentation == null) presentation = new PresentationEffects();
         for (int i = 0; i < frameEffects.size(); i++) {
-            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, useBeyond || i + 1 < frameEffects.size()
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, useBeyond || useCinematic || i + 1 < frameEffects.size()
                     ? writeBuffer.getFramebuffer() : outputFramebuffer);
             GLES20.glViewport(0, 0, renderer.surfaceWidth, renderer.surfaceHeight);
             renderer.viewportNeedsUpdate = true;
@@ -412,15 +440,30 @@ public class EffectComposer {
             renderEffect(frameEffects.get(i));
             swapBuffers();
         }
-        boolean borderDrawn = useBeyond && presentation.drawBorders(renderer, readBuffer, outputFramebuffer,
+        boolean borderDrawn = useBeyond && presentation.drawBorders(renderer, readBuffer,
+                useCinematic ? writeBuffer.getFramebuffer() : outputFramebuffer,
                 outX, outY, outWidth, outHeight, qualityLimit, visualRevision,
                 beyondMode == 2 ? beyond / 100f : 0f, blur / 100f, brightness / 100f, saturation / 100f);
-        if (!borderDrawn && (useBeyond || frameEffects.isEmpty())) {
+        if (borderDrawn && useCinematic) swapBuffers();
+
+        int opticalResult = OpticalEffects.SKIPPED;
+        if (useCinematic) {
+            if (optics == null) optics = new OpticalEffects();
+            opticalResult = optics.draw(renderer,readBuffer,writeBuffer,outputFramebuffer,
+                    outX,outY,outWidth,outHeight,cinematic,Math.min(cinematic.preset,qualityLimit),
+                    depth,sceneScore,frameBloomTexture,visualRevision);
+            if (opticalResult == OpticalEffects.NEEDS_COPY) swapBuffers();
+        }
+        if (opticalResult == OpticalEffects.NEEDS_COPY
+                || (opticalResult == OpticalEffects.SKIPPED && (useCinematic || (!borderDrawn && (useBeyond || frameEffects.isEmpty()))))) {
             if (copyMaterial == null) copyMaterial = new ScreenMaterial();
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, outputFramebuffer);
             GLES20.glViewport(0, 0, renderer.surfaceWidth, renderer.surfaceHeight);
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+            boolean preserveAlpha = opticalResult == OpticalEffects.NEEDS_COPY && GLES20.glIsEnabled(GLES20.GL_BLEND);
+            if (preserveAlpha) GLES20.glDisable(GLES20.GL_BLEND);
             drawCopy();
+            if (preserveAlpha) GLES20.glEnable(GLES20.GL_BLEND);
         }
         if (loggedFxaa != gameFxaa || loggedSharpness != gameSharpness || loggedFsr != gameFsr
                 || loggedFsrActive != fsrActive || loggedOutputWidth != outWidth || loggedOutputHeight != outHeight

@@ -7,7 +7,7 @@ import android.opengl.GLES20;
 import com.winlator.renderer.material.ScreenMaterial;
 import com.winlator.renderer.material.ShaderMaterial.Uniform;
 
-/** Game-space color adaptation and display-space ambient borders. GL-thread owned. */
+/** Display-space ambient borders. GL-thread owned. */
 final class PresentationEffects {
     private static class Pass extends ScreenMaterial {
         final String shader;
@@ -21,16 +21,13 @@ final class PresentationEffects {
 
     private final int[] linkStatus = new int[1];
     private EGLContext context;
-    private Pass histogram, cinematic, borders, ambientCapture, ambientGaussian;
+    private Pass borders, ambientCapture, ambientGaussian;
     private RenderTarget ambient, ambientScratch;
     private int ambientWidth, ambientHeight, ambientX, ambientY, ambientViewWidth, ambientViewHeight;
     private long ambientTime, ambientRevision;
     private float ambientBlur;
     private boolean ambientReady;
-    private RenderTarget latest, previous;
-    private int lastX, lastY, lastWidth, lastHeight;
-    private long lastAnalysis;
-    private boolean initialized, cinematicFailed, borderFailed;
+    private boolean borderFailed;
 
     private void compile(Pass pass) {
         pass.use();
@@ -60,47 +57,6 @@ final class PresentationEffects {
             release();
             context = current;
         }
-    }
-
-    boolean draw(GLRenderer r, RenderTarget source, int destination, int x, int y, int w, int h,
-                 int quality, float amount, float first, float second) {
-        useContext();
-        if (cinematicFailed) return false;
-        boolean blend = GLES20.glIsEnabled(GLES20.GL_BLEND);
-        try {
-            GLES20.glDisable(GLES20.GL_BLEND);
-            if (histogram == null) {
-                histogram = new Pass(PresentationShaders.histogramShader()); compile(histogram);
-                cinematic = new Pass(PresentationShaders.cinematicShader()); compile(cinematic);
-                latest = new RenderTarget(); allocate(latest, 1, 1);
-                previous = new RenderTarget(); allocate(previous, 1, 1);
-            }
-            if (lastX != x || lastY != y || lastWidth != w || lastHeight != h) initialized = false;
-            lastX = x; lastY = y; lastWidth = w; lastHeight = h;
-            long now = r.getSceneContentTime();
-            long elapsed = now - lastAnalysis;
-            if (!initialized || elapsed >= (5 - quality) * 65_000_000L || elapsed < 0) {
-                prepare(histogram, r, previous.getFramebuffer(), 1, 1, source.getTextureId(),
-                        initialized ? latest.getTextureId() : 0, x, y, w, h);
-                histogram.setUniformFloat(histogram.smoothing, initialized
-                        ? (float)Math.exp(-Math.max(0, elapsed) / 600_000_000.0) : 0);
-                render(r);
-                RenderTarget old = latest; latest = previous; previous = old;
-                lastAnalysis = now;
-                initialized = true;
-            }
-            prepare(cinematic, r, destination, r.surfaceWidth, r.surfaceHeight, source.getTextureId(),
-                    latest.getTextureId(), x, y, w, h);
-            cinematic.setUniformVec2(cinematic.grade, amount, quality);
-            cinematic.setUniformVec2(cinematic.style, first, second);
-            render(r);
-            checkDraw();
-            return true;
-        } catch (RuntimeException failure) {
-            cinematicFailed = true;
-            r.logGraphics("Cinematic bypassed: " + failure.getMessage());
-            return false;
-        } finally { restoreState(r, blend); }
     }
 
     boolean drawBorders(GLRenderer r, RenderTarget source, int destination, int x, int y,
@@ -201,17 +157,12 @@ final class PresentationEffects {
     void release() {
         releaseAmbientTargets();
         if (context != null && context.equals(EGL14.eglGetCurrentContext())) {
-            if (histogram != null) histogram.destroy();
-            if (cinematic != null) cinematic.destroy();
             if (borders != null) borders.destroy();
             if (ambientCapture != null) ambientCapture.destroy();
             if (ambientGaussian != null) ambientGaussian.destroy();
-            if (latest != null) latest.destroy();
-            if (previous != null) previous.destroy();
         }
-        histogram = cinematic = borders = ambientCapture = ambientGaussian = null;
-        latest = previous = null;
-        initialized = cinematicFailed = borderFailed = false;
+        borders = ambientCapture = ambientGaussian = null;
+        borderFailed = false;
         context = null;
     }
 }

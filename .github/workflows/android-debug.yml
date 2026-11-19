@@ -88,6 +88,7 @@ jobs:
           "$SCENE_PYTHON" -m pip install --disable-pip-version-check --only-binary=:all: 'numpy==2.3.5' 'PyOpenGL==3.1.10'
           "$SCENE_PYTHON" tools/tests/test_tsoa_scene_gpu.py
           "$SCENE_PYTHON" tools/tests/test_tsoa_presentation.py
+          "$SCENE_PYTHON" tools/tests/test_tsoa_optics.py
 
       - name: Build debug APK
         run: |

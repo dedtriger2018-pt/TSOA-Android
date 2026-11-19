@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="tsoa_editor_types">
+        <item>按钮</item>
+        <item>方向键</item>
+        <item>键值范围</item>
+        <item>摇杆</item>
+        <item>触控板</item>
+        <item>MIDI 键</item>
+        <item>径向菜单</item>
+    </string-array>
+    <string-array name="tsoa_editor_shapes">
+        <item>圆形</item>
+        <item>矩形</item>
+        <item>圆角矩形</item>
+        <item>正方形</item>
+    </string-array>
+    <string-array name="tsoa_editor_ranges">
+        <item>A 到 Z</item>
+        <item>0 到 9</item>
+        <item>F1 到 F12</item>
+        <item>数字键盘 0 到 9</item>
+    </string-array>
+    <string-array name="binding_type_entries">
+        <item>键盘</item>
+        <item>鼠标</item>
+        <item>手柄</item>
+    </string-array>
+    <string name="profile">配置</string>
+    <string name="none">无</string>
+    <string name="bindings">按键绑定</string>
+    <string name="columns">列数</string>
+    <string name="custom_text">自定义文字</string>
+    <string name="horizontal">水平</string>
+    <string name="icon">图标</string>
+    <string name="move_mouse_when_pressed">按下时移动鼠标</string>
+    <string name="note">音符</string>
+    <string name="opacity">不透明度</string>
+    <string name="orientation">方向</string>
+    <string name="range">范围</string>
+    <string name="scale">尺寸</string>
+    <string name="shape">形状</string>
+    <string name="toggle_switch">切换开关</string>
+    <string name="type">类型</string>
+    <string name="vertical">垂直</string>
+    <string name="binding">绑定</string>
+    <string name="binding_up">上方向绑定</string>
+    <string name="binding_right">右方向绑定</string>
+    <string name="binding_down">下方向绑定</string>
+    <string name="binding_left">左方向绑定</string>
+    <string name="no_profile_selected">尚未选择配置</string>
+    <string name="no_control_element_selected">尚未选择控件</string>
+</resources>

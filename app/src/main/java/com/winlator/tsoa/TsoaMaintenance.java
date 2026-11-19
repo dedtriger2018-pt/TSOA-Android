@@ -220,8 +220,20 @@ public final class TsoaMaintenance {
             new Date().toString(), activity.getPackageName(), info.versionName, info.versionCode,
             Build.MANUFACTURER + " " + Build.MODEL, Build.VERSION.RELEASE, Build.VERSION.SDK_INT,
             android.text.TextUtils.join(", ", Build.SUPPORTED_ABIS), Process.myUid(),
-            options.getScreenSize(), options.getFpsLimit(), options.getControlsMode(),
-            GameImportManager.isValidGameDirectory(GameImportManager.getGameDirectory(activity)));
+            "native".equals(options.getScreenSize()) ? s(R.string.tsoa_native_resolution) : options.getScreenSize(),
+            options.getFpsLimit() == 0 ? s(R.string.tsoa_unlimited) : Integer.toString(options.getFpsLimit()),
+            s(controlsLabel(options.getControlsMode())),
+            s(GameImportManager.isValidGameDirectory(GameImportManager.getGameDirectory(activity))
+                    ? R.string.tsoa_diagnostic_yes : R.string.tsoa_diagnostic_no));
+    }
+
+    private static int controlsLabel(String mode) {
+        switch (mode) {
+            case "off": return R.string.tsoa_controls_hidden;
+            case "rts": return R.string.tsoa_controls_rts;
+            case "custom": return R.string.tsoa_controls_custom;
+            default: return R.string.tsoa_controls_esc;
+        }
     }
 
     private static void addLog(ZipOutputStream zip, String name, File file) throws IOException {
@@ -245,7 +257,7 @@ public final class TsoaMaintenance {
         zip.closeEntry();
     }
 
-    private void showResult(String message) { showDialog("TSOA_FE", message, s(R.string.tsoa_maintenance_ok), null); }
+    private void showResult(String message) { showDialog(s(R.string.tsoa_brand), message, s(R.string.tsoa_maintenance_ok), null); }
 
     private void showDialog(String title, String message, String positive, Runnable action) {
         if (closed || activity.isFinishing() || activity.isDestroyed()) return;

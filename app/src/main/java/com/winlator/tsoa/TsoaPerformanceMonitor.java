@@ -20,7 +20,7 @@ public final class TsoaPerformanceMonitor implements Runnable {
     private final FrameLayout root;
     private TextView hud;
     private boolean adaptive;
-    private int thermal;
+    private int thermal = -1;
 
     public TsoaPerformanceMonitor(Activity activity, GLRenderer renderer, FrameLayout root) {
         this.activity = activity; this.renderer = renderer; this.root = root;
@@ -59,7 +59,7 @@ public final class TsoaPerformanceMonitor implements Runnable {
             PowerManager power = activity.getSystemService(PowerManager.class);
             if (power != null) thermal = power.getCurrentThermalStatus();
         }
-        budget.setThermal(thermal);
+        budget.setThermal(Math.max(0, thermal));
         if (hud != null && hud.getVisibility() == View.VISIBLE) {
             GraphicsBudget.Sample sample = budget.sample();
             if (sample == null) hud.setText(TsoaMenuLanguage.get(activity, R.string.tsoa_perf_warming));
@@ -70,9 +70,22 @@ public final class TsoaPerformanceMonitor implements Runnable {
                 hud.setText(TsoaMenuLanguage.get(activity, R.string.tsoa_perf_status,
                         idle ? 0f : sample.sourceRate, idle ? 0f : sample.generatedRate,
                         idle ? 0f : sample.submissionMs,
-                        memory.getTotalPss() / 1024, thermal, sample.quality));
+                        memory.getTotalPss() / 1024, TsoaMenuLanguage.get(activity, thermalLabel(thermal)), sample.quality));
             }
         }
         root.postDelayed(this, 2000);
     }
+    private static int thermalLabel(int status) {
+        switch (status) {
+            case 0: return R.string.tsoa_thermal_normal;
+            case 1: return R.string.tsoa_thermal_light;
+            case 2: return R.string.tsoa_thermal_moderate;
+            case 3: return R.string.tsoa_thermal_severe;
+            case 4: return R.string.tsoa_thermal_critical;
+            case 5: return R.string.tsoa_thermal_emergency;
+            case 6: return R.string.tsoa_thermal_shutdown;
+            default: return R.string.tsoa_thermal_unknown;
+        }
+    }
+
 }

@@ -16,7 +16,7 @@ public final class TsoaMenuLanguage {
 
     public static Context context(Context base, String language) {
         Locale locale = "en".equals(language) ? Locale.ENGLISH
-                : "zh-CN".equals(language) ? Locale.SIMPLIFIED_CHINESE : new Locale("pt");
+                : "zh-CN".equals(language) ? Locale.SIMPLIFIED_CHINESE : Locale.forLanguageTag("pt-BR");
         Configuration configuration = new Configuration(base.getResources().getConfiguration());
         configuration.setLocales(new LocaleList(locale));
         configuration.setLayoutDirection(locale);

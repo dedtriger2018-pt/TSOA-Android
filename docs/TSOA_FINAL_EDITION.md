@@ -12,12 +12,11 @@ de quadros reais. As opções novas começam desligadas.
   Modo Original suspende os efeitos, o painel e a integração opcional,
   recuperando os valores salvos ao sair do modo. Resolução e controles
   configurados continuam disponíveis no modo.
-- **Cinematic Engine** usa um histograma aproximado de três regiões de
-  luminância, média e temperatura de cor. O GPU atualiza uma textura de
-  1×1 em intervalos de 130–260 ms de conteúdo novo, com amortecimento
-  temporal. Exposição, contraste e cor são limitados para proteger pretos
-  e altas luzes. Granulação fixa e vinheta são opcionais. Se Bloom estiver
-  ativo, ele recebe a imagem ajustada.
+- **Cinematic Engine** simula lentes e filme. Em **Vídeo → Cinematic
+  Engine**, há preset e intensidade geral, com chaves e intensidades
+  individuais para reflexos anamórficos, foco, halation, grão e vinheta.
+  O foco reutiliza a profundidade do Genesis e a vinheta respeita a
+  abertura 16:9. [Simulação óptica e validação](TSOA_OPTICS.md)
 - **Beyond Screen** oferece Desligado, Borda preta e Blur ambiental.
   O modo ambiental reduz o viewport, desfoca em dois eixos e usa as
   bordas reais da cena, com intensidade, brilho, desfoque e saturação
@@ -73,9 +72,9 @@ depende de validação com saves reais.
 | Seção | Estado |
 |---|---|
 | 1–2. Base e preservação | Base validada, lobby animado existente, recursos e correções de runtime preservados. |
-| 3. Framework | O compositor reutiliza alvos e encadeia EASU, reconstrução, Cinematic, efeitos espaciais e de cor, e Beyond. FG recebe só quadros reais processados. |
+| 3. Framework | O compositor reutiliza alvos e encadeia EASU, reconstrução, efeitos espaciais e de cor, Beyond e Cinematic. FG recebe só quadros reais processados. |
 | 4–5. Gênesis e Lumen | Preservados conforme o teste físico. Profundidade e materiais estimados da imagem 2D. Decomposição semântica, geometria métrica, oclusões reais, personagens deformáveis e volumetria seguem experimentais ou pendentes. |
-| 6–7. Apresentação | Histograma e adaptação de cor na GPU, com extensão ambiental desfocada opcional. Narrativa e amortecimento temporal próprio das bordas seguem pendentes. |
+| 6–7. Apresentação | Simulação óptica e extensão ambiental desfocada na GPU. Narrativa e amortecimento temporal próprio das bordas seguem pendentes. |
 | 8. Reality Bridge | Captura direta do quadro consultado pelo jogador, PDA categorizado e registro local. Integração semântica pendente. |
 | 9. Chronos | Checkpoints, ramos, recuperação dos saves anteriores, vínculos com o PDA. Árvore semântica pendente. |
 | 10–12. Desempenho e opções | Painel local, limites adaptativos com histerese, menus PT/EN/zh-CN e Modo Original. |

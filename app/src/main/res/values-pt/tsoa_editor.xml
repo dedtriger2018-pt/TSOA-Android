@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="tsoa_editor_types">
+        <item>Botão</item>
+        <item>Direcional</item>
+        <item>Teclado em faixa</item>
+        <item>Analógico</item>
+        <item>Touchpad</item>
+        <item>Tecla MIDI</item>
+        <item>Menu radial</item>
+    </string-array>
+    <string-array name="tsoa_editor_shapes">
+        <item>Círculo</item>
+        <item>Retângulo</item>
+        <item>Retângulo arredondado</item>
+        <item>Quadrado</item>
+    </string-array>
+    <string-array name="tsoa_editor_ranges">
+        <item>A a Z</item>
+        <item>0 a 9</item>
+        <item>F1 a F12</item>
+        <item>Num 0 a Num 9</item>
+    </string-array>
+    <string-array name="binding_type_entries">
+        <item>Teclado</item>
+        <item>Mouse</item>
+        <item>Controle</item>
+    </string-array>
+</resources>
