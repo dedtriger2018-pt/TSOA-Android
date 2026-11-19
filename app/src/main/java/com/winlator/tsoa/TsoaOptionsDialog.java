@@ -301,6 +301,12 @@ public final class TsoaOptionsDialog {
         toggle(s(R.string.tsoa_pda), s(R.string.tsoa_pda_detail), "game_pda", options.isPdaEnabled());
         if (!options.isOriginalMode()) {
             action(s(R.string.tsoa_pda_browse), null, actions::openPda, true);
+            intChoice(s(R.string.tsoa_sync_mode), "chronos_sync_mode",
+                    new String[]{s(R.string.tsoa_sync_manual), s(R.string.tsoa_sync_auto), s(R.string.tsoa_sync_hybrid)},
+                    new int[]{0, 1, 2}, options.getSyncMode());
+            note(s(R.string.tsoa_sync_detail));
+            toggle(s(R.string.tsoa_sync_notification), s(R.string.tsoa_sync_notification_detail),
+                    "chronos_notify", options.isCheckpointNotificationEnabled());
             action(s(R.string.tsoa_chronos), s(R.string.tsoa_chronos_detail), actions::openChronos, true);
         }
         action(s(R.string.tsoa_export_saves), s(R.string.tsoa_export_saves_detail), actions::exportSaves, true);

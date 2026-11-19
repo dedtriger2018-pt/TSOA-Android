@@ -75,6 +75,7 @@ import com.winlator.tsoa.TsoaOptions;
 import com.winlator.tsoa.TsoaSceneSession;
 import com.winlator.tsoa.TsoaJournal;
 import com.winlator.tsoa.TsoaSaveAccess;
+import com.winlator.tsoa.TsoaHybridSync;
 import com.winlator.tsoa.TsoaPerformanceMonitor;
 import com.winlator.tsoa.TsoaGameColor;
 import com.winlator.tsoa.TsoaGameControls;
@@ -153,6 +154,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
     private TsoaSceneSession sceneSession;
     private TsoaPerformanceMonitor performanceMonitor;
     private boolean ownsSaveSession;
+    private volatile String startingSaveFingerprint;
+    private boolean guestEndedNormally;
     private android.widget.Button pdaButton;
     private int appliedGameHdrMode = -1;
     private Boolean appliedGameBloomEnabled;
@@ -302,6 +305,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         setupUI();
 
         Executors.newSingleThreadExecutor().execute(() -> {
+            if (dedicatedLauncherMode) startingSaveFingerprint = TsoaHybridSync.startFingerprint(this);
             if (!isGenerateWineprefix()) {
                 setupWineSystemFiles();
                 extractGraphicsDriverFiles();
@@ -398,7 +402,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         if (environment != null) environment.stopEnvironmentComponents();
         if (ownsSaveSession) {
             ownsSaveSession = false;
-            TsoaSaveAccess.endGame();
+            TsoaHybridSync.finishSession(this, guestEndedNormally ? startingSaveFingerprint : null);
         }
         ForegroundService.stopSession(this);
         super.onDestroy();
@@ -633,7 +637,17 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         }
 
         guestProgramLauncherComponent.setEnvVars(envVars);
-        guestProgramLauncherComponent.setTerminationCallback((status) -> exit());
+        guestProgramLauncherComponent.setTerminationCallback(status -> {
+            if (!dedicatedLauncherMode) {
+                exit();
+                return;
+            }
+            runOnUiThread(() -> {
+                if (isDestroyed() || isFinishing()) return;
+                guestEndedNormally = status == 0;
+                exit();
+            });
+        });
         environment.addComponent(guestProgramLauncherComponent);
 
         if (isGenerateWineprefix()) {

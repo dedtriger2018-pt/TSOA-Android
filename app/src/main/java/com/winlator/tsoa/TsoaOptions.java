@@ -65,6 +65,11 @@ public final class TsoaOptions {
     public boolean isOriginalMode() { return enabled("game_original"); }
     public boolean isAdaptiveQuality() { return enabled("game_adaptive"); }
     public boolean isPerformanceVisible() { return enabled("game_performance"); }
+    public int getSyncMode() {
+        int mode = preferences.getInt("chronos_sync_mode", 0);
+        return mode >= 0 && mode <= 2 ? mode : 0;
+    }
+    public boolean isCheckpointNotificationEnabled() { return enabled("chronos_notify"); }
     public boolean isPdaEnabled() { return enabled("game_pda"); }
     public int getCinematicLevel() { return getSceneLevel("game_cinematic"); }
     public int getCinematicAmount() { return percent("game_cinematic_amount", 75); }

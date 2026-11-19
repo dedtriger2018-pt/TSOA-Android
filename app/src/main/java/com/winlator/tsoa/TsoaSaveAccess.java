@@ -18,6 +18,15 @@ public final class TsoaSaveAccess {
     public static synchronized void endGame() { running = false; }
     public static synchronized boolean gameRunning() { return running; }
 
+    public static synchronized boolean busy() { return running || working; }
+
+    static synchronized boolean finishGameForSync() {
+        if (!running || working) return false;
+        running = false;
+        working = true;
+        return true;
+    }
+
     static synchronized void beginMaintenance() throws IOException {
         if (running || working) throw new IOException("Game or save operation active");
         working = true;

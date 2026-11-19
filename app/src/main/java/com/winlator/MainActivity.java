@@ -483,7 +483,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
 
     private boolean canMaintainGame() {
         if (rootFSReady && !launcherBusy && !gameLaunchActive && !importInProgress && !maintenance.isBusy()
-                && !com.winlator.tsoa.TsoaSaveAccess.gameRunning()) return true;
+                && !com.winlator.tsoa.TsoaSaveAccess.busy()) return true;
         AppUtils.showToast(this, menuString(R.string.tsoa_wait_before_files));
         return false;
     }
@@ -605,7 +605,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     private void ensureDedicatedContainerAndLaunch() {
         if (isFinishing() || isDestroyed() || !launcherVisible) return;
         if (!rootFSReady || importInProgress || gameLaunchActive || launcherBusy) return;
-        if (maintenance != null && maintenance.isBusy()) {
+        if ((maintenance != null && maintenance.isBusy()) || com.winlator.tsoa.TsoaSaveAccess.busy()) {
             AppUtils.showToast(this, menuString(R.string.tsoa_wait_for_saves));
             return;
         }

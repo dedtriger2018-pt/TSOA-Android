@@ -308,4 +308,13 @@
     <string name="tsoa_brand">TSOA_FE</string>
     <string name="tsoa_game_title">The Street of Adrift</string>
     <string name="tsoa_pda_short">PDA</string>
+    <string name="tsoa_sync_mode">Chronos 与 PDA 同步</string>
+    <string name="tsoa_sync_manual">手动</string>
+    <string name="tsoa_sync_auto">自动</string>
+    <string name="tsoa_sync_hybrid">混合</string>
+    <string name="tsoa_sync_detail">游戏正常退出且存档有变化时，“自动”和“混合”模式会创建检查点。“自动”模式在 PDA 中先显示自动记录，“混合”模式显示完整档案。</string>
+    <string name="tsoa_sync_notification">创建自动检查点时通知</string>
+    <string name="tsoa_sync_notification_detail">获得权限时显示 Android 通知。</string>
+    <string name="tsoa_sync_checkpoint">自动检查点</string>
+    <string name="tsoa_sync_record_detail">游戏正常退出后，Chronos 保存了一份存档副本。</string>
 </resources>

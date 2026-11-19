@@ -33,7 +33,7 @@ public final class TsoaMaintenance {
     private static final int EXPORT_SAVES = 82;
     private static final int IMPORT_SAVES = 83;
     private static final int EXPORT_DIAGNOSTICS = 84;
-    private static final String SAVE_PATH = "rootfs/home/xuser/.wine/drive_c/users/xuser/AppData/LocalLow/Caramel-Mocha Studio/TSOA_FE";
+    static final String SAVE_PATH = "rootfs/home/xuser/.wine/drive_c/users/xuser/AppData/LocalLow/Caramel-Mocha Studio/TSOA_FE";
     private static final long MAX_LOG_BYTES = 4L * 1024L * 1024L;
     private final Activity activity;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();

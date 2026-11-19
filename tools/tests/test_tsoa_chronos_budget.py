@@ -41,7 +41,26 @@ public final class ChronosCheck {
         ok(Files.readString(saves.resolve("slot")).equals("branch-B"));
         store.delete(a);
         ok(store.list().size()==2);
-        System.out.println("PASS: Chronos branching, safe rollback, invalid archive, leaf removal and live-session lock");
+        String start=ChronosStore.fingerprint(saves.toFile());
+        Files.writeString(saves.resolve("Player.log"),"ignore runtime logs");
+        ok(ChronosStore.fingerprint(saves.toFile()).equals(start));
+        ok(store.createAutomatic(saves.toFile(),start)==null);
+        Files.writeString(saves.resolve("slot"),"auto-state");
+        ChronosStore.Point automatic=store.createAutomatic(saves.toFile(),start);
+        ok(automatic!=null && automatic.automaticDigest.equals(ChronosStore.fingerprint(saves.toFile())));
+        ok(automatic.parent.equals("root") && b.automaticDigest==null);
+        ok(store.createAutomatic(saves.toFile(),start)==null);
+        store.restore(saves.toFile(),root);
+        String old=ChronosStore.fingerprint(saves.toFile());
+        ok(store.createAutomatic(saves.toFile(),old)==null);
+        store.restore(saves.toFile(),automatic);
+        ok(store.createAutomatic(saves.toFile(),old)==null);
+        ok(TsoaSaveAccess.startGame());
+        ok(TsoaSaveAccess.finishGameForSync() && TsoaSaveAccess.busy());
+        ok(!TsoaSaveAccess.startGame());
+        TsoaSaveAccess.endMaintenance();
+        ok(!TsoaSaveAccess.busy());
+        System.out.println("PASS: Chronos branching, safe rollback, invalid archive, automatic deduplication after restore and live-session handoff");
     }
 }
 """

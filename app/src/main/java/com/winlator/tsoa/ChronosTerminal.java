@@ -114,7 +114,8 @@ final class ChronosTerminal {
         inspector.removeAllViews();
         String label = terminal.date(selected.time);
         if (selected.id.equals(head)) label = terminal.s(R.string.tsoa_chronos_current, label);
-        terminal.card(inspector, label, terminal.s(R.string.tsoa_graph_checkpoint), TsoaTerminal.RED, null);
+        int kind = selected.automaticDigest == null ? R.string.tsoa_graph_checkpoint : R.string.tsoa_sync_checkpoint;
+        terminal.card(inspector, label, terminal.s(kind), TsoaTerminal.RED, null);
         ChronosStore.Point point = selected;
         inspector.addView(terminal.button(terminal.s(R.string.tsoa_graph_manage), false,
                 () -> { terminal.dismiss(); manage.accept(point); }));
@@ -150,6 +151,7 @@ final class ChronosTerminal {
         private final GestureDetector pan;
         private final ScaleGestureDetector pinch;
         private final String activeLabel = terminal.s(R.string.tsoa_graph_active);
+        private final String automaticLabel = terminal.s(R.string.tsoa_sync_auto);
         private final String checkpointLabel = terminal.s(R.string.tsoa_graph_checkpoint);
         private final float density = getResources().getDisplayMetrics().density;
         private boolean positioned;
@@ -293,7 +295,7 @@ final class ChronosTerminal {
             paint.setTypeface(Typeface.DEFAULT_BOLD);
             paint.setTextSize(12);
             paint.setColor(current ? TsoaTerminal.RED : TsoaTerminal.MUTED);
-            canvas.drawText(current ? activeLabel : checkpointLabel,
+            canvas.drawText(current ? activeLabel : node.point.automaticDigest != null ? automaticLabel : checkpointLabel,
                     node.area.left+10,node.area.top+21,paint);
             paint.setTypeface(Typeface.MONOSPACE);
             paint.setColor(TsoaTerminal.TEXT);

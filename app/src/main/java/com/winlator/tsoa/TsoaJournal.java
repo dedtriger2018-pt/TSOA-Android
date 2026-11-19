@@ -159,6 +159,8 @@ public final class TsoaJournal {
         private final TsoaTerminal terminal;
         private final SurfaceView game;
         private final SharedPreferences prefs;
+        private final int mode;
+        private java.util.List<ChronosStore.Point> automatic;
         private ArrayList<Record> archive;
         private LinearLayout cards;
         private TextView count;
@@ -169,12 +171,15 @@ public final class TsoaJournal {
             terminal = new TsoaTerminal(context);
             this.game = game;
             prefs = TsoaOptions.prefs(context);
+            mode = new TsoaOptions(context).getSyncMode();
+            if (mode == 1) category = -2;
         }
 
         void open() { terminal.show(); show(); }
 
         private void show() {
             archive = list(terminal.activity);
+            automatic = mode == 0 ? java.util.Collections.emptyList() : TsoaHybridSync.store(terminal.activity).list();
             LinearLayout screen = terminal.column();
             LinearLayout top = terminal.row();
             EditText search = new EditText(terminal.locale);
@@ -200,13 +205,15 @@ public final class TsoaJournal {
             filters.setHorizontalScrollBarEnabled(false);
             LinearLayout tokens = terminal.row();
             tokens.setPadding(0, terminal.dp(7), 0, terminal.dp(7));
-            for (int id = -1; id < CATEGORIES.length; id++) {
+            int first = mode == 0 ? -1 : -2;
+            for (int id = first; id < CATEGORIES.length; id++) {
                 final int filter = id;
-                String name = id < 0 ? terminal.s(R.string.tsoa_pda_all) : category(terminal, id);
+                String name = id == -2 ? terminal.s(R.string.tsoa_sync_auto) :
+                        id == -1 ? terminal.s(R.string.tsoa_pda_all) : category(terminal, id);
                 android.widget.Button button = terminal.button(name, id == category, () -> {
                     category = filter;
                     for (int i = 0; i < tokens.getChildCount(); i++) {
-                        boolean active = i == filter + 1;
+                        boolean active = i == filter - first;
                         android.widget.Button token = (android.widget.Button)tokens.getChildAt(i);
                         token.setTextColor(active ? TsoaTerminal.RED : TsoaTerminal.TEXT);
                         token.setBackground(terminal.surface(active ? 0xff262022 : TsoaTerminal.PANEL,
@@ -244,7 +251,24 @@ public final class TsoaJournal {
             cards.removeAllViews();
             int matches = 0, unread = 0;
             String term = searchable(query.trim(), terminal.language());
-            for (Record record : archive) {
+            if (category < 0) for (ChronosStore.Point point : automatic) {
+                if (point.automaticDigest == null) continue;
+                String title = terminal.s(R.string.tsoa_sync_checkpoint);
+                String date = terminal.date(point.time);
+                if (!term.isEmpty() && !searchable(title + " " + date, terminal.language()).contains(term)) continue;
+                String seenKey = "pda_sync_seen." + point.id;
+                boolean unseen = !prefs.getBoolean(seenKey, false);
+                if (unseen) unread++;
+                matches++;
+                terminal.card(cards, title, unseen ? terminal.s(R.string.tsoa_pda_unseen, date) : date,
+                        unseen ? TsoaTerminal.RED : TsoaTerminal.MUTED, () -> {
+                            prefs.edit().putBoolean(seenKey, true).apply();
+                            LinearLayout page = terminal.column();
+                            terminal.card(page, title, terminal.s(R.string.tsoa_sync_record_detail), TsoaTerminal.MUTED, null);
+                            terminal.page(title, date, this::show, terminal.scroll(page), null);
+                        });
+            }
+            if (category != -2) for (Record record : archive) {
                 if (category >= 0 && category != record.category) continue;
                 String title = category(terminal, record.category);
                 String metadata = describe(terminal, record);

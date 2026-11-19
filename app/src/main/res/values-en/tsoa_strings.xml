@@ -308,4 +308,13 @@
     <string name="tsoa_brand">TSOA_FE</string>
     <string name="tsoa_game_title">The Street of Adrift</string>
     <string name="tsoa_pda_short">PDA</string>
+    <string name="tsoa_sync_mode">Chronos and PDA sync</string>
+    <string name="tsoa_sync_manual">Manual</string>
+    <string name="tsoa_sync_auto">Automatic</string>
+    <string name="tsoa_sync_hybrid">Hybrid</string>
+    <string name="tsoa_sync_detail">Automatic and Hybrid make a checkpoint when the game exits normally and saves changed. Automatic opens the PDA to automatic records. Hybrid shows the entire archive.</string>
+    <string name="tsoa_sync_notification">Notify when an automatic checkpoint is created</string>
+    <string name="tsoa_sync_notification_detail">Shows an Android notification when permissions allow it.</string>
+    <string name="tsoa_sync_checkpoint">Automatic checkpoint</string>
+    <string name="tsoa_sync_record_detail">Chronos saved a copy of the saves after the game exited normally.</string>
 </resources>
